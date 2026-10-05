@@ -1,0 +1,32 @@
+# Based on the official example:
+# https://docs.localstack.cloud/aws/getting-started/installation/#docker-compose
+services:
+  localstack:
+    container_name: '${LOCALSTACK_DOCKER_NAME:-localstack-main}'
+    # Only deviation from the official example: the image tag is pinned.
+    # `localstack/localstack` (latest, 2026.x) exits at startup with code 55
+    # unless LOCALSTACK_AUTH_TOKEN is set (free account required).
+    # 4.9.0 is the last community release that runs with no account, no token.
+    # To use latest: change the tag and set LOCALSTACK_AUTH_TOKEN in .env.
+    image: localstack/localstack:4.9.0
+    ports:
+      - '127.0.0.1:4566:4566'            # LocalStack Gateway (all services)
+      - '127.0.0.1:4510-4559:4510-4559'  # external services port range
+      - '127.0.0.1:443:443'              # LocalStack HTTPS Gateway (remove if 443 is taken on your machine)
+    environment:
+      # Only required with `latest`/Pro images: https://docs.localstack.cloud/getting-started/auth-token/
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:-}
+      # LocalStack configuration: https://docs.localstack.cloud/references/configuration/
+      - DEBUG=${DEBUG:-0}
+      - PERSISTENCE=${PERSISTENCE:-0}
+    volumes:
+      - '${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack'
+      - '/var/run/docker.sock:/var/run/docker.sock'
+    # Not in the official example: lets `docker compose up --wait`
+    # block until LocalStack is actually ready to serve requests.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
