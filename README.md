@@ -8,6 +8,8 @@ Detailed setup guides live in [`docs/`](docs/):
 
 - [Running LocalStack with Docker Compose](docs/localstack-docker-compose.md) — based on the [official example](https://docs.localstack.cloud/aws/getting-started/installation/#docker-compose)
 - [Installing the AWS CLI (all platforms)](docs/aws-cli-install.md) — official AWS installers only
+- [AWS CLI basics](docs/aws-cli-basics.md) — profiles, config files, request flow, SigV4
+- [LocalStack architecture](docs/localstack-architecture.md) — gateway, fake account, routing: how the magic works
 
 In short: Docker Desktop running + AWS CLI v2:
 
