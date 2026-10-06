@@ -26,6 +26,8 @@ jobs:
         with:
           path: website
           node-version: 22
+        env:
+          DEPLOY_TARGET: github-pages
 
       - name: Lint
         run: pnpm --dir website lint
