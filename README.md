@@ -13,6 +13,7 @@ In short: Docker Desktop running + AWS CLI v2:
 
 ```sh
 curl -fsSL https://awscli.amazonaws.com/v2/install.sh | bash   # AWS CLI v2
+cp .env.example .env                                           # local config (git-ignored)
 ```
 
 ## Quick start

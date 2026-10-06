@@ -1,4 +1,6 @@
+.env
 .env.local
+.localstack-data/
 volume/
 .DS_Store
 __pycache__/
