@@ -7,13 +7,27 @@ description: A hands-on curriculum from S3 to Terraform — concepts plus LocalS
 >
 > Loop per topic: **read concept → predict behavior → experiment in LocalStack → verify prediction**.
 >
-> Progress tracking: tick the boxes as you go. `- [ ]` concept, `* [ ]` experiment.
+> Progress tracking: tick the checkboxes as you go, then update the table below to match.
+
+## Progress
+
+| Phase | Topic                                 | Progress   | Status      |
+| ----- | ------------------------------------- | ---------- | ----------- |
+| 0     | Tooling: LocalStack sandbox + AWS CLI | 4 / 4      | Done        |
+| 1     | S3 (deep) + IAM (theory)              | 0 / 12     | Not started |
+| 2     | Compute: Lambda                       | 0 / 10     | Not started |
+| 3     | API Gateway → Lambda → DynamoDB       | 0 / 9      | Not started |
+| 4     | SQS (deep) + SNS + EventBridge        | 0 / 10     | Not started |
+| 5     | CloudWatch + Secrets Manager          | 0 / 6      | Not started |
+| 6     | Terraform                             | 0 / 6      | Not started |
+| 7     | Real AWS (free tier)                  | 0 / 3      | Not started |
+|       | **Total**                             | **4 / 60** | **7%**      |
 
 LocalStack coverage: all phases below work in the community edition, except IAM is **not enforced** (learn as theory) and CloudWatch metrics are partial.
 
 ---
 
-## Phase 0 — Tooling ✅ (done)
+## Phase 0 — Tooling (done)
 
 - [x] Docker Compose LocalStack sandbox
 - [x] AWS CLI installed + `localstack` profile
