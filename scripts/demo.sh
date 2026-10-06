@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 # Guided demo: S3 + SQS + DynamoDB on LocalStack
 # Requires the `localstack` AWS CLI profile: run `make setup-cli` once.
 set -e

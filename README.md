@@ -60,7 +60,7 @@ Equivalent without a profile (e.g. for SDKs):
 
 ## Notes
 
-- **Version pinning**: the image is pinned to `localstack/localstack:4.9.0` because newer releases (2026.x) require an auth token even for community use. See the [compose doc](docs/localstack-docker-compose.md#what-this-repo-uses-and-why-it-differs-slightly) for the exact difference vs the official example and how to switch.
+- **Version**: the image is pinned to `localstack/localstack:2026.9.0` (current latest) for reproducibility — bump the tag in `compose.yaml` to upgrade. This version requires a free LocalStack account token (`LOCALSTACK_AUTH_TOKEN` in `.env`, see [compose doc](docs/localstack-docker-compose.md#getting-your-token)).
 - **Persistence**: resources are kept while the container lives; `make down` + `make up` loses them (persistence across restarts is a Pro feature). `make clean` wipes everything.
 - **Default region**: change it in `.env` (`AWS_DEFAULT_REGION`), then re-run `make setup-cli` if the profile already exists.
 

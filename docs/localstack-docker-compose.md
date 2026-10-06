@@ -43,16 +43,20 @@ services:
 
 ## What this repo uses (and why it differs slightly)
 
-Our [`compose.yaml`](../compose.yaml) follows the official structure with two deviations:
+Our [`compose.yaml`](../compose.yaml) is the official example with **one deviation**:
 
 | Deviation | Reason |
 |---|---|
-| `image: localstack/localstack:4.9.0` (pinned) | 4.9.0 is the last community release that runs **tokenless** — zero account needed for a learning sandbox |
-| `LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:-}` (optional, default empty) | Same reason: don't hard-require a token |
+| `image: localstack/localstack:2026.9.0` (pinned) | Same as `latest` right now, but pinned so the whole team gets the same version. Bump the tag deliberately to upgrade. |
 
-Everything else matches the official example: `container_name` / `ports` / `DEBUG` / `PERSISTENCE` / `volumes` all come from `.env` with the same defaults. We only **add** a healthcheck so `docker compose up --wait` blocks until LocalStack is ready.
+Everything else — required token (`${LOCALSTACK_AUTH_TOKEN:?}`), ports, `DEBUG`, `PERSISTENCE`, volumes — matches the official example exactly. We only **add** a healthcheck so `docker compose up --wait` blocks until LocalStack is ready.
 
-To go back to the fully-official setup: set `image: localstack/localstack` (or any 2026.x tag) and put a token in `LOCALSTACK_AUTH_TOKEN` (free account at [app.localstack.cloud](https://app.localstack.cloud)).
+### Getting your token
+
+1. Create a free account at [app.localstack.cloud](https://app.localstack.cloud)
+2. Copy your auth token (Account → Auth token)
+3. Put it in `.env`: `LOCALSTACK_AUTH_TOKEN=ls-...`
+4. `make up`
 
 ## What each part does
 

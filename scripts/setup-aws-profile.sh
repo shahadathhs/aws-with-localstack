@@ -1,4 +1,4 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 # Configures the `localstack` AWS CLI profile — the official way to point the
 # AWS CLI at LocalStack without any wrapper:
 # https://docs.localstack.cloud/aws/connecting/aws-cli/#configuring-a-custom-profile
