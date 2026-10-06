@@ -4,12 +4,12 @@ A local AWS sandbox: run real AWS APIs (S3, SQS, DynamoDB, Lambda, ...) on your 
 
 ## Prerequisites
 
-Detailed setup guides live in [`docs/`](docs/):
+Detailed guides live in [`website/src/content/docs/`](website/src/content/docs/) — the same content powers the [documentation site](https://shahadathhs.github.io/aws-with-localstack/):
 
-- [Running LocalStack with Docker Compose](docs/localstack-docker-compose.md) — based on the [official example](https://docs.localstack.cloud/aws/getting-started/installation/#docker-compose)
-- [Installing the AWS CLI (all platforms)](docs/aws-cli-install.md) — official AWS installers only
-- [AWS CLI basics](docs/aws-cli-basics.md) — profiles, config files, request flow, SigV4
-- [LocalStack architecture](docs/localstack-architecture.md) — gateway, fake account, routing: how the magic works
+- [Running LocalStack with Docker Compose](website/src/content/docs/guides/localstack-compose.md) — based on the [official example](https://docs.localstack.cloud/aws/getting-started/installation/#docker-compose)
+- [Installing the AWS CLI (all platforms)](website/src/content/docs/guides/install-aws-cli.md) — official AWS installers only
+- [AWS CLI basics](website/src/content/docs/concepts/aws-cli.md) — profiles, config files, request flow, SigV4
+- [How LocalStack works](website/src/content/docs/concepts/architecture.md) — gateway, fake account, routing: how the magic works
 
 In short: Docker Desktop running + AWS CLI v2:
 
@@ -62,12 +62,19 @@ Equivalent without a profile (e.g. for SDKs):
 
 ## Notes
 
-- **Version**: the image is pinned to `localstack/localstack:2026.9.0` (current latest) for reproducibility — bump the tag in `compose.yaml` to upgrade. This version requires a free LocalStack account token (`LOCALSTACK_AUTH_TOKEN` in `.env`, see [compose doc](docs/localstack-docker-compose.md#getting-your-token)).
+- **Version**: the image is pinned to `localstack/localstack:2026.9.0` (current latest) for reproducibility — bump the tag in `compose.yaml` to upgrade. This version requires a free LocalStack account token (`LOCALSTACK_AUTH_TOKEN` in `.env`, see [compose doc](website/src/content/docs/guides/localstack-compose.md#getting-your-token)).
 - **Persistence**: resources are kept while the container lives; `make down` + `make up` loses them (persistence across restarts is a Pro feature). `make clean` wipes everything.
 - **Default region**: change it in `.env` (`AWS_DEFAULT_REGION`), then re-run `make setup-cli` if the profile already exists.
 
 ## Roadmap
 
-- [x] LocalStack sandbox (S3, SQS, DynamoDB, ...)
-- [ ] Terraform against LocalStack (`terraform` + local provider endpoints)
-- [ ] App code (SDK) talking to LocalStack in dev
+Track the full curriculum (concepts + experiments per service) in [`learning-plan.md`](website/src/content/docs/learning-plan.md):
+
+- [x] Phase 0 — LocalStack sandbox + AWS CLI (S3, SQS, DynamoDB)
+- [ ] Phase 1 — S3 (deep) + IAM theory
+- [ ] Phase 2 — Lambda
+- [ ] Phase 3 — API Gateway → Lambda → DynamoDB
+- [ ] Phase 4 — SQS (deep) + SNS + EventBridge
+- [ ] Phase 5 — CloudWatch + Secrets Manager
+- [ ] Phase 6 — Terraform
+- [ ] Phase 7 — Real AWS (free tier)

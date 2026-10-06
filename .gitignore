@@ -1,8 +1,36 @@
+# --- Environment & secrets ---
 .env
 .env.local
+.env.*.local
+
+# --- LocalStack runtime data ---
 .localstack-data/
 volume/
-.DS_Store
+
+# --- Node / website ---
+node_modules/
+dist/
+.astro/
+coverage/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Python (local experiments) ---
 __pycache__/
 *.pyc
 .venv/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Editors (keep shareable config) ---
+.idea/
+*.swp
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

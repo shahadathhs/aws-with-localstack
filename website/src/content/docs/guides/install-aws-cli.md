@@ -1,6 +1,9 @@
-# Installing the AWS CLI (all platforms)
+---
+title: Installing the AWS CLI (all platforms)
+description: Official AWS CLI v2 installers for macOS, Linux and Windows — no pip, no Homebrew surprises.
+---
 
-> Official reference: <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html>
+Official reference: <https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html>
 
 This project uses **AWS CLI v2**. All methods below are the official AWS installers — standalone binaries (bundled Python), no pip, no Homebrew, no system dependencies.
 

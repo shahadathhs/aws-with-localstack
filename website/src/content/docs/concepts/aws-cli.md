@@ -1,6 +1,10 @@
-# AWS CLI basics — how it's configured (the theory)
+---
+title: AWS CLI basics — how it's configured
+description: Profiles, config files, resolution order, request lifecycle and SigV4 — the theory the whole setup rides on.
+---
 
-> Official references:
+Official references:
+
 > [Config files](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) ·
 > [Named profiles](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-profiles.html) ·
 > [Environment variables](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html) ·
@@ -12,10 +16,10 @@ Not magic — an HTTPS client. Every command (`aws s3 ls`) becomes an **HTTP req
 
 ## 2. The two configuration files
 
-| File | Contains | Nature |
-|---|---|---|
-| `~/.aws/config` | region, output format, `endpoint_url`, ... | **where/how** to talk — not secret |
-| `~/.aws/credentials` | `aws_access_key_id`, `aws_secret_access_key` | **who** you are — secret |
+| File                 | Contains                                     | Nature                             |
+| -------------------- | -------------------------------------------- | ---------------------------------- |
+| `~/.aws/config`      | region, output format, `endpoint_url`, ...   | **where/how** to talk — not secret |
+| `~/.aws/credentials` | `aws_access_key_id`, `aws_secret_access_key` | **who** you are — secret           |
 
 This repo's `make setup-cli` adds a `localstack` profile to both:
 
@@ -75,7 +79,7 @@ aws s3 ls
   → parse:      JSON response → pretty-print
 ```
 
-**SigV4** is AWS's real security boundary: the signature proves the request came from someone holding the secret key, and wasn't tampered with. It also *declares* which service and region it targets — which is how LocalStack's gateway knows where to route (see [localstack-architecture.md](localstack-architecture.md)).
+**SigV4** is AWS's real security boundary: the signature proves the request came from someone holding the secret key, and wasn't tampered with. It also _declares_ which service and region it targets — which is how LocalStack's gateway knows where to route (see [How LocalStack works](/concepts/architecture/)).
 
 See the actual headers yourself:
 
@@ -85,7 +89,7 @@ aws s3 ls --debug 2>&1 | grep -i authorization
 
 ## 6. The `endpoint_url` override — why LocalStack works
 
-Normally the CLI *computes* the endpoint from service + region: `https://s3.eu-west-1.amazonaws.com`. A profile's `endpoint_url` overrides only that final step:
+Normally the CLI _computes_ the endpoint from service + region: `https://s3.eu-west-1.amazonaws.com`. A profile's `endpoint_url` overrides only that final step:
 
 ```
 real AWS:   sign(service, region) → https://s3.eu-west-1.amazonaws.com
@@ -97,7 +101,7 @@ Signing, parsing, retry logic, SDK behavior — all identical. "Where AWS is" is
 ## 7. In real life you'd also have
 
 - `aws configure` → the interactive wizard writing these same files
-- IAM users / SSO / roles → where *real* credentials come from (LocalStack doesn't care — any string works)
+- IAM users / SSO / roles → where _real_ credentials come from (LocalStack doesn't care — any string works)
 - `--output json|yaml|table|text` → presentation only
 
-Related in this repo: [Installing the AWS CLI](aws-cli-install.md) · [Running LocalStack](localstack-docker-compose.md)
+Related: [Installing the AWS CLI](/guides/install-aws-cli/) · [Running LocalStack](/guides/localstack-compose/)

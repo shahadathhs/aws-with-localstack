@@ -1,6 +1,10 @@
-# LocalStack architecture — the mental model
+---
+title: How LocalStack works — the mental model
+description: One gateway port, fake account routing, DNS tricks and sibling Lambda containers — how LocalStack emulates AWS.
+---
 
-> Official references:
+Official references:
+
 > [Installation](https://docs.localstack.cloud/aws/getting-started/installation/) ·
 > [Connecting / AWS CLI](https://docs.localstack.cloud/aws/connecting/aws-cli/) ·
 > [Networking](https://docs.localstack.cloud/aws/customization/networking/) ·
@@ -50,14 +54,14 @@ LocalStack keeps the **AWS API protocol** but swaps the **destination**. Your to
 
 They're just **labels** LocalStack stamps on everything:
 
-| | Real AWS | LocalStack |
-|---|---|---|
-| ARN | `arn:aws:dynamodb:eu-west-1:123456789012:table/demo-table` | `arn:aws:dynamodb:eu-west-1:000000000000:table/demo-table` |
-| Account ID | your real 12-digit ID | always `000000000000` |
-| Region | actual datacenter | whatever you claim |
-| Auth | IAM, policies, MFA, signing validation | none — any credentials accepted (`test/test` is convention) |
+|            | Real AWS                                                   | LocalStack                                                  |
+| ---------- | ---------------------------------------------------------- | ----------------------------------------------------------- |
+| ARN        | `arn:aws:dynamodb:eu-west-1:123456789012:table/demo-table` | `arn:aws:dynamodb:eu-west-1:000000000000:table/demo-table`  |
+| Account ID | your real 12-digit ID                                      | always `000000000000`                                       |
+| Region     | actual datacenter                                          | whatever you claim                                          |
+| Auth       | IAM, policies, MFA, signing validation                     | none — any credentials accepted (`test/test` is convention) |
 
-The `test/test` credentials exist only because the AWS CLI *refuses* to send a request without some. Requests are still SigV4-signed — but nothing checks the signature, and the gateway reads the service/region out of it as routing hints.
+The `test/test` credentials exist only because the AWS CLI _refuses_ to send a request without some. Requests are still SigV4-signed — but nothing checks the signature, and the gateway reads the service/region out of it as routing hints.
 
 ## The one gateway port
 
@@ -71,7 +75,7 @@ This is also why `localhost.localstack.cloud` exists: it's a public DNS wildcard
 
 ## Lambda is special: docker.sock
 
-Most services are emulated *inside* the LocalStack container. Lambda actually **executes your code** — it does that by launching *sibling* Docker containers through the mounted `/var/run/docker.sock`. That's why the compose file requires the socket mount, and why Lambda functions behave so realistically.
+Most services are emulated _inside_ the LocalStack container. Lambda actually **executes your code** — it does that by launching _sibling_ Docker containers through the mounted `/var/run/docker.sock`. That's why the compose file requires the socket mount, and why Lambda functions behave so realistically.
 
 ## State and lifetime
 
@@ -80,11 +84,11 @@ Most services are emulated *inside* the LocalStack container. Lambda actually **
 
 ## Real vs fake, layer by layer
 
-| Layer | Real AWS | LocalStack |
-|---|---|---|
+| Layer      | Real AWS                     | LocalStack                                    |
+| ---------- | ---------------------------- | --------------------------------------------- |
 | Addressing | `s3.eu-west-1.amazonaws.com` | `localhost.localstack.cloud:4566` → 127.0.0.1 |
-| Identity | IAM users, roles, policies | everyone is `000000000000`, allow-all |
-| Data plane | Amazon's actual fleets | service emulators in one container |
-| Billing | per-request costs | free |
+| Identity   | IAM users, roles, policies   | everyone is `000000000000`, allow-all         |
+| Data plane | Amazon's actual fleets       | service emulators in one container            |
+| Billing    | per-request costs            | free                                          |
 
-Prerequisite reading: [AWS CLI basics](aws-cli-basics.md) — explains the profile/endpoint mechanism LocalStack relies on.
+Prerequisite reading: [AWS CLI basics](/concepts/aws-cli/) — explains the profile/endpoint mechanism LocalStack relies on.

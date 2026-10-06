@@ -1,6 +1,6 @@
 COMPOSE := docker compose
 
-.PHONY: help up down restart logs status setup-cli aws demo clean
+.PHONY: help up down restart logs status setup-cli aws demo clean site-install site-dev site-build site-lint
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -33,3 +33,15 @@ demo: ## Run a guided S3 + SQS + DynamoDB demo
 clean: ## Stop LocalStack and DELETE all data
 	$(COMPOSE) down -v
 	rm -rf volume .localstack-data
+
+site-install: ## Install docs site dependencies (pnpm)
+	pnpm --dir website install
+
+site-dev: ## Run docs site dev server at http://localhost:4321
+	pnpm --dir website dev
+
+site-build: ## Build docs site into website/dist
+	pnpm --dir website build
+
+site-lint: ## Lint + format-check the docs site (oxlint, eslint, prettier)
+	pnpm --dir website lint
