@@ -91,4 +91,4 @@ Most services are emulated _inside_ the LocalStack container. Lambda actually **
 | Data plane | Amazon's actual fleets       | service emulators in one container            |
 | Billing    | per-request costs            | free                                          |
 
-Prerequisite reading: [AWS CLI basics](aws-cli/) — explains the profile/endpoint mechanism LocalStack relies on.
+Prerequisite reading: [AWS CLI basics](/basics/aws-cli/) — explains the profile/endpoint mechanism LocalStack relies on.

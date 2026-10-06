@@ -79,7 +79,7 @@ aws s3 ls
   → parse:      JSON response → pretty-print
 ```
 
-**SigV4** is AWS's real security boundary: the signature proves the request came from someone holding the secret key, and wasn't tampered with. It also _declares_ which service and region it targets — which is how LocalStack's gateway knows where to route (see [How LocalStack works](architecture/)).
+**SigV4** is AWS's real security boundary: the signature proves the request came from someone holding the secret key, and wasn't tampered with. It also _declares_ which service and region it targets — which is how LocalStack's gateway knows where to route (see [How LocalStack works](/basics/architecture/)).
 
 See the actual headers yourself:
 
@@ -104,4 +104,4 @@ Signing, parsing, retry logic, SDK behavior — all identical. "Where AWS is" is
 - IAM users / SSO / roles → where _real_ credentials come from (LocalStack doesn't care — any string works)
 - `--output json|yaml|table|text` → presentation only
 
-Related: [Installing the AWS CLI](../getting-started/install-aws-cli/) · [Running LocalStack](../getting-started/localstack-compose/)
+Related: [Installing the AWS CLI](/getting-started/install-aws-cli/) · [Running LocalStack](/getting-started/localstack-compose/)
