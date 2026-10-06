@@ -6,6 +6,7 @@ A local AWS sandbox: run real AWS APIs (S3, SQS, DynamoDB, Lambda, ...) on your 
 
 Detailed guides live in [`website/src/content/docs/`](website/src/content/docs/) — the same content powers the [documentation site](https://shahadathhs.github.io/aws-with-localstack/):
 
+- [AWS learning plan](website/src/content/docs/learning-plan.md) — the curriculum: phases, concepts, experiments
 - [Running LocalStack with Docker Compose](website/src/content/docs/guides/localstack-compose.md) — based on the [official example](https://docs.localstack.cloud/aws/getting-started/installation/#docker-compose)
 - [Installing the AWS CLI (all platforms)](website/src/content/docs/guides/install-aws-cli.md) — official AWS installers only
 - [AWS CLI basics](website/src/content/docs/concepts/aws-cli.md) — profiles, config files, request flow, SigV4

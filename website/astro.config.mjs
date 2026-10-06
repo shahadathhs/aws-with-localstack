@@ -25,14 +25,17 @@ export default defineConfig({
       ],
       sidebar: [
         {
-          label: 'Guides',
+          label: 'Curriculum',
+          items: [{ slug: 'learning-plan' }],
+        },
+        {
+          label: 'Getting started',
           items: [{ slug: 'guides/localstack-compose' }, { slug: 'guides/install-aws-cli' }],
         },
         {
           label: 'Concepts',
           items: [{ slug: 'concepts/aws-cli' }, { slug: 'concepts/architecture' }],
         },
-        { slug: 'learning-plan' },
       ],
     }),
   ],
