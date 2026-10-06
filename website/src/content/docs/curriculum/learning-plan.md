@@ -32,7 +32,7 @@ LocalStack coverage: all phases below work in the community edition, except IAM 
 - [x] Docker Compose LocalStack sandbox
 - [x] AWS CLI installed + `localstack` profile
 - [x] First S3 / SQS / DynamoDB commands (`make demo`)
-- [x] Understand: profiles, endpoint_url, gateway routing, fake account (see [AWS CLI basics](concepts/aws-cli/), [How LocalStack works](concepts/architecture/))
+- [x] Understand: profiles, endpoint_url, gateway routing, fake account (see [AWS CLI basics](../concepts/aws-cli/), [How LocalStack works](../concepts/architecture/))
 
 ## Phase 1 — Storage + identity: S3 (deep) + IAM (theory)
 

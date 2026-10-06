@@ -104,4 +104,4 @@ Signing, parsing, retry logic, SDK behavior — all identical. "Where AWS is" is
 - IAM users / SSO / roles → where _real_ credentials come from (LocalStack doesn't care — any string works)
 - `--output json|yaml|table|text` → presentation only
 
-Related: [Installing the AWS CLI](../guides/install-aws-cli/) · [Running LocalStack](../guides/localstack-compose/)
+Related: [Installing the AWS CLI](../getting-started/install-aws-cli/) · [Running LocalStack](../getting-started/localstack-compose/)
