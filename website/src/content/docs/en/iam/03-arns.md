@@ -28,13 +28,13 @@ arn:partition:service:region:account-id:resource
 
 The `resource` part varies by service — this is where people trip:
 
-| Service  | Resource portion                                    | Why                                                                                                             |
-| -------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| DynamoDB | `table/Name` or `table/Name/index/GSI`              | tables _and their indexes_ are separately addressable                                                           |
-| S3       | `bucket` or `bucket/key/path`                       | **no region, no account** — bucket names are already globally unique (see [object model](/s3/01-object-model/)) |
-| IAM      | `user/Bob`, `role/report-reader`, `policy/TodoRead` | **no region** — IAM is global; region-less                                                                      |
-| SQS      | `queue-name` (no type prefix)                       | bare, easy to misread                                                                                           |
-| Lambda   | `function:name:version`                             | colons instead of slashes                                                                                       |
+| Service  | Resource portion                                    | Why                                                                                                                |
+| -------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| DynamoDB | `table/Name` or `table/Name/index/GSI`              | tables _and their indexes_ are separately addressable                                                              |
+| S3       | `bucket` or `bucket/key/path`                       | **no region, no account** — bucket names are already globally unique (see [object model](/en/s3/01-object-model/)) |
+| IAM      | `user/Bob`, `role/report-reader`, `policy/TodoRead` | **no region** — IAM is global; region-less                                                                         |
+| SQS      | `queue-name` (no type prefix)                       | bare, easy to misread                                                                                              |
+| Lambda   | `function:name:version`                             | colons instead of slashes                                                                                          |
 
 Wildcards in policies use `*`: `arn:aws:s3:::ph1-bucket/public/*` (every object under `public/`), `arn:aws:s3:::*` (every bucket in the account — usually a smell).
 

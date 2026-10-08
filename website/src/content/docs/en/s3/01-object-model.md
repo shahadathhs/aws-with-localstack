@@ -29,7 +29,7 @@ An object is:
 | **Value**        | 0 bytes to 5 TB. A single PUT caps at 5 GB — larger needs multipart upload (pieces uploaded in parallel, assembled by S3)  |
 | **Metadata**     | system (`Content-Type`, `Last-Modified`) + user-defined key/value pairs                                                    |
 | **ETag**         | MD5 of the bytes — _for simple puts_. Not for multipart or KMS-encrypted objects; use checksums (CRC32, SHA-256) for those |
-| **StorageClass** | which shelf the bytes live on — [next chapters](/s3/03-storage-classes-and-lifecycle/)                                     |
+| **StorageClass** | which shelf the bytes live on — [next chapters](/en/s3/03-storage-classes-and-lifecycle/)                                  |
 
 ### Folders do not exist
 

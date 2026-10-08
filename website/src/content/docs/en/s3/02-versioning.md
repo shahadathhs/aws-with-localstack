@@ -25,7 +25,7 @@ A delete marker is itself a version of the key. Restoring a "deleted" object = d
 Rules and consequences:
 
 - Versioning is a bucket-level switch: `Enabled` / `Suspended` / never-set. **You can never return to never-set** — suspended still keeps versions accumulated while it was enabled
-- Every stored version is **billed**. Churning the same key 1000 times with versioning on stores 1000 versions (lifecycle rules can expire noncurrent versions — [storage classes and lifecycle](/s3/03-storage-classes-and-lifecycle/))
+- Every stored version is **billed**. Churning the same key 1000 times with versioning on stores 1000 versions (lifecycle rules can expire noncurrent versions — [storage classes and lifecycle](/en/s3/03-storage-classes-and-lifecycle/))
 - MFA Delete exists (requires MFA to permanently delete versions) — rarely used, know it exists
 
 ## Experiment

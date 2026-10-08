@@ -1,0 +1,69 @@
+---
+title: Learn AWS for free — with LocalStack
+description: A local AWS sandbox — run S3, SQS, DynamoDB, Lambda and IAM on your machine with Docker Compose. Step-by-step guides and a hands-on curriculum, no cloud bill.
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+A local AWS sandbox: real APIs, zero costs, zero cloud-account headaches. Every lesson on this site follows one rule — understand the service, then prove it with a real API call, even if the API is running on `localhost:4566`.
+
+## Start here
+
+<CardGrid stagger>
+  <LinkCard
+    title="The learning plan"
+    href="/en/learning-plan/"
+    description="Eight phases from S3 to Terraform — concepts, experiments, and what LocalStack cannot teach you."
+  />
+  <LinkCard
+    title="Run LocalStack with Docker Compose"
+    href="/en/getting-started/localstack-compose/"
+    description="The official example, pinned and explained — gateway port, docker.sock, healthchecks, troubleshooting."
+  />
+  <LinkCard
+    title="Install the AWS CLI"
+    href="/en/getting-started/install-aws-cli/"
+    description="Official installers for macOS, Linux and Windows. No pip, no Homebrew surprises."
+  />
+</CardGrid>
+
+## What you will actually learn
+
+<CardGrid stagger>
+  <Card title="S3 — object storage">
+    The folder illusion, versioning, storage classes, presigned URLs, policies, events.
+  </Card>
+  <Card title="IAM — identity">
+    Users vs roles, policy JSON, the evaluation order, least privilege, ARN anatomy.
+  </Card>
+  <Card title="Lambda — compute">
+    Warm sandboxes, cold starts, the event object, S3 and SQS triggers.
+  </Card>
+  <Card title="DynamoDB — database">
+    Partition keys, query-first design, GSIs, and why it bills per access.
+  </Card>
+  <Card title="SQS + SNS — messaging">
+    At-least-once delivery, visibility timeouts, dead-letter queues, fan-out.
+  </Card>
+  <Card title="Terraform — IaC">
+    Desired vs actual state, plan/apply, drift — rebuilding the whole stack from code.
+  </Card>
+</CardGrid>
+
+## How it works
+
+1. `make up` — start the sandbox: a full AWS emulator in Docker on your machine.
+2. `make demo` — make your first real API calls: a bucket, a queue, a table.
+3. Follow the lessons: read a concept, _predict_ the behavior, run it, verify.
+
+The gap between your prediction and the actual output is where the learning happens.
+
+## Two languages, one curriculum
+
+Every lesson is available in [English](/en/learning-plan/) and [Bangla](/bn/learning-plan/) — switch anytime from the header or from any docs page.
+
+<div class="author-note">
+
+This project is written and maintained by [Shahadath Hossen Sajib](/en/author/), a backend engineer — [see the author page](/en/author/) for the full story.
+
+</div>

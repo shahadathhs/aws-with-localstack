@@ -1,0 +1,40 @@
+---
+import Pagination from 'virtual:starlight/components/Pagination';
+
+const base = import.meta.env.BASE_URL.replace(/\/+$/, '');
+const lang = Astro.locals.starlightRoute?.locale ?? 'en';
+const authorUrl = `${base}/${lang}/author/`.replace(/\/+/g, '/');
+---
+
+<footer class="sl-flex author-footer">
+  <p class="credit">
+    {'Written by '}
+    <a href={authorUrl}>Shahadath Hossen Sajib</a>
+    {' · '}
+    <a href="https://shahadathhs.vercel.app/" rel="me noopener">
+      Portfolio
+    </a>
+  </p>
+  <Pagination />
+</footer>
+
+<style>
+  @layer starlight.components {
+    .author-footer {
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .credit {
+      margin-top: 2rem;
+      font-size: var(--sl-text-sm);
+      color: var(--sl-color-gray-3);
+    }
+    .credit a {
+      color: var(--sl-color-gray-3);
+      text-decoration-color: var(--sl-color-gray-5);
+    }
+    .credit a:hover {
+      color: var(--sl-color-white);
+    }
+  }
+</style>

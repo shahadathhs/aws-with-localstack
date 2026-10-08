@@ -13,27 +13,27 @@ LocalStack coverage: everything below works in the community edition, except IAM
 
 Set up and understand the sandbox:
 
-1. [Running LocalStack with Docker Compose](/getting-started/localstack-compose/) — the official example, pinned; gateway port, docker.sock, healthchecks, troubleshooting
-2. [Installing the AWS CLI](/getting-started/install-aws-cli/) — official installers for macOS, Linux, Windows; updates; the `awslocal` story
-3. [AWS CLI basics](/basics/aws-cli/) — config files, profiles, resolution order, SigV4, the `endpoint_url` override
-4. [How LocalStack works](/basics/architecture/) — one gateway port, fake account routing, the DNS trick, Lambda sibling containers
+1. [Running LocalStack with Docker Compose](/en/getting-started/localstack-compose/) — the official example, pinned; gateway port, docker.sock, healthchecks, troubleshooting
+2. [Installing the AWS CLI](/en/getting-started/install-aws-cli/) — official installers for macOS, Linux, Windows; updates; the `awslocal` story
+3. [AWS CLI basics](/en/basics/aws-cli/) — config files, profiles, resolution order, SigV4, the `endpoint_url` override
+4. [How LocalStack works](/en/basics/architecture/) — one gateway port, fake account routing, the DNS trick, Lambda sibling containers
 
 ## Phase 1 — Storage + identity: S3 (deep) + IAM (theory)
 
 S3:
 
-1. [The object model](/s3/01-object-model/) — flat key-value store; the folder illusion; consistency; durability vs availability
-2. [Versioning](/s3/02-versioning/) — delete markers, restores, noncurrent-version billing
-3. [Storage classes and lifecycle](/s3/03-storage-classes-and-lifecycle/) — Standard to Deep Archive; retrieval economics; lifecycle rules
-4. [Presigned URLs](/s3/04-presigned-urls/) — signed GET and PUT; expiry; the CORS trap
-5. [Security and encryption](/s3/05-security-and-encryption/) — access gates, policy-as-prose, SSE-S3 vs SSE-KMS
-6. [Event notifications](/s3/06-events/) — S3 as an actor; prefix/suffix filters; at-least-once delivery
+1. [The object model](/en/s3/01-object-model/) — flat key-value store; the folder illusion; consistency; durability vs availability
+2. [Versioning](/en/s3/02-versioning/) — delete markers, restores, noncurrent-version billing
+3. [Storage classes and lifecycle](/en/s3/03-storage-classes-and-lifecycle/) — Standard to Deep Archive; retrieval economics; lifecycle rules
+4. [Presigned URLs](/en/s3/04-presigned-urls/) — signed GET and PUT; expiry; the CORS trap
+5. [Security and encryption](/en/s3/05-security-and-encryption/) — access gates, policy-as-prose, SSE-S3 vs SSE-KMS
+6. [Event notifications](/en/s3/06-events/) — S3 as an actor; prefix/suffix filters; at-least-once delivery
 
 IAM:
 
-7. [Principals, users, roles](/iam/01-principals-users-roles/) — long-lived keys vs STS temporary credentials
-8. [Policies and evaluation](/iam/02-policies-and-evaluation/) — policy JSON; explicit deny > allow > implicit deny; least privilege
-9. [ARNs](/iam/03-arns/) — parse any resource address; service quirks
+7. [Principals, users, roles](/en/iam/01-principals-users-roles/) — long-lived keys vs STS temporary credentials
+8. [Policies and evaluation](/en/iam/02-policies-and-evaluation/) — policy JSON; explicit deny > allow > implicit deny; least privilege
+9. [ARNs](/en/iam/03-arns/) — parse any resource address; service quirks
 
 ## Phase 2 — Compute: Lambda
 

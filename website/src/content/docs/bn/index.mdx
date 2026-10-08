@@ -1,0 +1,67 @@
+---
+title: বিনামূল্যে AWS শিখুন — LocalStack দিয়ে
+description: লোকাল AWS স্যান্ডবক্স — Docker Compose দিয়ে নিজের মেশিনেই S3, SQS, DynamoDB, Lambda ও IAM চালান। ধাপে ধাপে গাইড আর হাতে-কলমে কারিকুলাম, কোনো ক্লাউড বিল নেই।
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+একটি লোকাল AWS স্যান্ডবক্স: আসল API, শূন্য খরচ, ক্লাউড অ্যাকাউন্টের ঝামেলা নেই। এই সাইটের প্রতিটি লেসনে একটিই নিয়ম — সার্ভিস বুঝুন, তারপর আসল API call দিয়ে প্রমাণ করুন, API-টি `localhost:4566`-এ চলুক আর চলুক।
+
+## এখান থেকে শুরু
+
+<CardGrid stagger>
+  <LinkCard
+    title="লার্নিং প্ল্যান"
+    href="/bn/learning-plan/"
+    description="S3 থেকে Terraform — আটটি phase, কনসেপ্ট, এক্সপেরিমেন্ট এবং LocalStack যা শেখাতে পারে না তার তালিকা।"
+  />
+  <LinkCard
+    title="Docker Compose দিয়ে LocalStack"
+    href="/bn/getting-started/localstack-compose/"
+    description="অফিসিয়াল উদাহরণ, পিন করা ভার্সন ও ব্যাখ্যাসহ — গেটওয়ে পোর্ট, docker.sock, হেলথচেক, ট্রাবলশুটিং।"
+  />
+  <LinkCard
+    title="AWS CLI ইনস্টল"
+    href="/bn/getting-started/install-aws-cli/"
+    description="macOS, Linux ও Windows-এর অফিসিয়াল ইনস্টলার। pip বা Homebrew-র ঝামেলা নেই।"
+  />
+</CardGrid>
+
+## আসলে কী শিখবেন
+
+<CardGrid stagger>
+  <Card title="S3 — অবজেক্ট স্টোরেজ">
+    ফোল্ডার ইলিউশন, ভার্সনিং, স্টোরেজ ক্লাস, presigned URL, policy, ইভেন্ট।
+  </Card>
+  <Card title="IAM — আইডেন্টিটি">
+    User বনাম role, policy JSON, evaluation ক্রম, least privilege, ARN গঠন।
+  </Card>
+  <Card title="Lambda — কম্পিউট">Warm sandbox, cold start, ইভেন্ট অবজেক্ট, S3 ও SQS trigger।</Card>
+  <Card title="DynamoDB — ডেটাবেস">
+    Partition key, query-first ডিজাইন, GSI, আর "per access"-এ বিল কেন।
+  </Card>
+  <Card title="SQS + SNS — মেসেজিং">
+    At-least-once delivery, visibility timeout, dead-letter queue, fan-out।
+  </Card>
+  <Card title="Terraform — IaC">
+    Desired বনাম actual state, plan/apply, drift — পুরো স্ট্যাক কোড থেকে পুনর্গঠন।
+  </Card>
+</CardGrid>
+
+## এটি কীভাবে চলে
+
+1. `make up` — স্যান্ডবক্স চালু: তোমার মেশিনে Docker-এ পূর্ণ AWS এমুলেটর।
+2. `make demo` — প্রথম আসল API call: একটি bucket, queue, table।
+3. লেসন অনুসরণ করো: কনসেপ্ট পড়ো, _আচরণ অনুমান_ করো, চালাও, যাচাই করো।
+
+তোমার অনুমান আর বাস্তব আউটপুটের ফারাকই আসল শিক্ষা।
+
+## দুই ভাষা, এক কারিকুলাম
+
+প্রতিটি লেসন ইংরেজি ও বাংলা — দুই ভাষাতেই: [ইংরেজি](/en/learning-plan/) · [বাংলা](/bn/learning-plan/)। হেডার বা যেকোনো ডকস পেজ থেকে যখন খুশি বদলাও।
+
+<div class="author-note">
+
+এই প্রজেক্টটি লিখেছেন ও রক্ষণাবেক্ষণ করছেন [Shahadath Hossen Sajib](/bn/author/) — backend engineer; বিস্তারিত [লেখক পেজে](/bn/author/)।
+
+</div>

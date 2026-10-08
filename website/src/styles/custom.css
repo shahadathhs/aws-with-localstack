@@ -1,0 +1,38 @@
+:root {
+  --site-max-width: 90rem;
+}
+
+.author-note {
+  font-size: 0.95rem;
+  color: var(--sl-color-gray-3);
+}
+
+/* Ultra-wide screens: cap the docs layout to a centered column.
+   The fixed panes (left sidebar, "On this page" rail) ignore ancestor
+   max-width — pin them to the column edges explicitly. No transform,
+   so nothing changes about normal page scrolling. */
+@media (min-width: 90rem) {
+  body {
+    max-width: var(--site-max-width);
+    margin-inline: auto;
+  }
+
+  /* same inline padding as the sidebar so brand and nav items line up */
+  header.header > .header {
+    max-width: var(--site-max-width);
+    margin-inline: auto;
+    padding-inline: var(--sl-sidebar-pad-x);
+  }
+
+  /* percentages resolve against the layout viewport (scrollbar-excluded),
+     so these stay aligned with body's centered column */
+  .sidebar-pane {
+    inset-inline-start: calc((100% - var(--site-max-width)) / 2);
+  }
+
+  .right-sidebar {
+    inset-inline-start: auto;
+    inset-inline-end: calc((100% - var(--site-max-width)) / 2);
+    width: var(--sl-sidebar-width);
+  }
+}

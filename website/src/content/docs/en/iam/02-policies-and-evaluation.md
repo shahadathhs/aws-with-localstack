@@ -35,13 +35,13 @@ Note `s3:ListBucket` targets the _bucket_ ARN, while `s3:GetObject` targets _obj
 
 ### Policy flavors — where documents can live
 
-| Type                | Attached to                                     | Example                                                               |
-| ------------------- | ----------------------------------------------- | --------------------------------------------------------------------- |
-| Identity policy     | user / role / group                             | "this function may read bucket X"                                     |
-| Resource policy     | the resource itself (bucket policy, SQS policy) | "account B may send to this queue"                                    |
-| Permission boundary | user / role (cap)                               | "this role can NEVER touch IAM, whatever its policies say"            |
-| SCP                 | the whole account (organizations)               | company-level guardrails                                              |
-| Trust policy        | a role — _who may assume it_                    | the Lambda example from [principals](/iam/01-principals-users-roles/) |
+| Type                | Attached to                                     | Example                                                                  |
+| ------------------- | ----------------------------------------------- | ------------------------------------------------------------------------ |
+| Identity policy     | user / role / group                             | "this function may read bucket X"                                        |
+| Resource policy     | the resource itself (bucket policy, SQS policy) | "account B may send to this queue"                                       |
+| Permission boundary | user / role (cap)                               | "this role can NEVER touch IAM, whatever its policies say"               |
+| SCP                 | the whole account (organizations)               | company-level guardrails                                                 |
+| Trust policy        | a role — _who may assume it_                    | the Lambda example from [principals](/en/iam/01-principals-users-roles/) |
 
 ### The evaluation — one order, no exceptions
 

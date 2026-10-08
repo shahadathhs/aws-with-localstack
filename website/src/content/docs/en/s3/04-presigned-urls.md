@@ -12,7 +12,7 @@ Default state: bucket private, only credentialed AWS calls allowed. Your web app
 - Make the bucket public — now _everyone_ has everything, forever
 - Proxy bytes through your server — your server pays bandwidth and does zero-value work
 
-The correct tool: a **presigned URL**. It is a normal S3 URL plus a **SigV4 query signature** — the _same signature mechanism_ your CLI uses in headers (see [AWS CLI basics](/basics/aws-cli/)), moved into the query string. It encodes:
+The correct tool: a **presigned URL**. It is a normal S3 URL plus a **SigV4 query signature** — the _same signature mechanism_ your CLI uses in headers (see [AWS CLI basics](/en/basics/aws-cli/)), moved into the query string. It encodes:
 
 - the **action** (GET or PUT, this one key, no listing, no neighbors)
 - the **credentials scope** (which access key authorized it)

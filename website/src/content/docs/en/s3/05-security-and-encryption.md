@@ -16,7 +16,7 @@ Access to an object passes through several independent gates; **all of them must
 3. **IAM policies** — attached to the identities making the request (identity-based)
 4. **ACLs** — the legacy mechanism, off by default; know they exist, do not use them
 
-For same-account access: an allow in _either_ the bucket policy or an IAM policy is enough (no explicit deny anywhere). For cross-account: **both** sides must allow. Full evaluation logic is IAM territory — [policies and evaluation](/iam/02-policies-and-evaluation/).
+For same-account access: an allow in _either_ the bucket policy or an IAM policy is enough (no explicit deny anywhere). For cross-account: **both** sides must allow. Full evaluation logic is IAM territory — [policies and evaluation](/en/iam/02-policies-and-evaluation/).
 
 Reading a bucket policy is a language skill. This sentence — _anonymous internet users may GET every object under `public/`_ — looks like:
 

@@ -49,7 +49,7 @@ Reading it as prose: _objects whose keys start with `logs/` — after 30 days mo
 
 Beyond transitions, rules can also:
 
-- expire **noncurrent versions** (the billing antidote from [versioning](/s3/02-versioning/)): `NoncurrentVersionExpiration: { NoncurrentDays: 30 }`
+- expire **noncurrent versions** (the billing antidote from [versioning](/en/s3/02-versioning/)): `NoncurrentVersionExpiration: { NoncurrentDays: 30 }`
 - `AbortIncompleteMultipartUpload` after N days — recommended on every bucket, aborts orphaned multipart debris
 
 When two rules could apply to the same object, S3 applies the action that **cheapest/free-est for storage** (transition wins over nothing, free always wins over transition). Note transitions only go _down_ the hotness ladder; Standard→IA→Glacier, never back up — lifecycle cannot "un-archive".

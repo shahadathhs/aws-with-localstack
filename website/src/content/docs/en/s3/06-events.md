@@ -44,7 +44,7 @@ Rules the configuration obeys:
 
 ## Experiment
 
-Configuring a notification requires a _existing_ target (LocalStack validates the ARN shape). A queue is the cheapest target we already know from the [demo](/getting-started/localstack-compose/):
+Configuring a notification requires a _existing_ target (LocalStack validates the ARN shape). A queue is the cheapest target we already know from the [demo](/en/getting-started/localstack-compose/):
 
 ```sh
 export AWS_PROFILE=localstack
