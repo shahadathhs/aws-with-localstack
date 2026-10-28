@@ -2,7 +2,7 @@
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
 
-/* Design tokens: docs/design/README.md. Light is the default; Fumadocs toggles the `dark` class.
+/* Design tokens: docs/README.md. Light is the default; Fumadocs toggles the `dark` class.
    Colour carries meaning: blue = predict or do, green = verified, red = denied, amber = real-AWS note. */
 :root {
   --bg: #f4f0e6; --raised: #fbf9f3; --sunken: #ebe6d8;
@@ -22,7 +22,7 @@
 }
 
 /* map the tokens onto Fumadocs' theme variables */
-:root, .dark, .dark #nd-sidebar {
+:root, .dark {
   --color-fd-background: var(--bg);
   --color-fd-foreground: var(--text);
   --color-fd-muted: var(--sunken);
@@ -53,11 +53,6 @@ h1, h2, .display { font-family: var(--font-display), Georgia, serif; font-weight
 
 .brand { display: inline-flex; align-items: center; gap: 9px; font-family: var(--font-display), Georgia, serif; font-weight: 600; font-size: 18px; }
 
-/* Desktop sidebar: the top bar already has brand, search, language and theme, so hide the sidebar's own
-   header and footer blocks (first and last child of the aside); the mobile drawer keeps them. */
-#nd-sidebar > :first-child,
-#nd-sidebar > :last-child { display: none; }
-
 /* diagrams: drawn with the same tokens, so they follow the theme */
 svg.diagram text { font-family: var(--font-mono-latin), ui-monospace, monospace; fill: var(--text2); font-size: 10.5px; }
 svg.diagram .ln { stroke: var(--text2); fill: none; stroke-width: 1.3; }
@@ -68,7 +63,7 @@ svg.diagram .t-main { fill: var(--text); font-weight: 500; }
 svg.diagram .t-deny { fill: var(--deny); }
 svg.diagram .t-ok { fill: var(--ok); }
 
-/* landing page blocks (docs/design/mockups/src/common.css) */
+/* landing page blocks (docs/mockups/src/common.css) */
 .col { max-width: 1080px; margin: 0 auto; border-inline: 1px solid var(--line); }
 .sec { border-top: 1px solid var(--line); padding: 36px 16px; }
 @media (min-width: 768px) { .sec { padding: 44px 48px; } }
@@ -107,3 +102,29 @@ svg.diagram .t-ok { fill: var(--ok); }
 @media (min-width: 768px) { .foot { padding: 32px 48px; gap: 24px 90px; } }
 .foot b { display: block; font: 400 11.5px var(--font-mono-latin), monospace; letter-spacing: .07em; text-transform: uppercase; color: var(--text3); margin-bottom: 8px; }
 .foot a { display: block; min-height: 28px; }
+
+/* Tailwind v4 resets buttons to the default cursor; restore the pointer on everything clickable */
+button:not(:disabled), [role='button']:not([aria-disabled='true']), summary, select, label[for], [type='checkbox'], [type='radio'] { cursor: pointer; }
+
+/* lesson page: the notebook look from docs/mockups/02-lesson.png, applied to the markdown prose */
+.lesson-title { font-size: clamp(34px, 5vw, 52px); line-height: 1.08; margin-top: 10px; }
+.lesson-eyebrow { font: 12.5px/1.2 var(--font-mono-latin), monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); }
+.lesson-eyebrow b { color: var(--accent); font-weight: 500; }
+.lesson-lead { color: var(--text2); font-size: 18px; line-height: 1.6; margin-top: 14px; }
+.lesson { color: var(--text2); font-size: 16px; line-height: 1.75; }
+.lesson strong { color: var(--text); font-weight: 600; }
+.lesson h2 { color: var(--text); font-size: 28px; margin: 44px 0 14px; scroll-margin-top: 80px; }
+.lesson h3 { color: var(--text); font-size: 18px; font-weight: 600; margin: 28px 0 8px; scroll-margin-top: 80px; }
+.lesson a:not(.not-prose) { color: var(--accent); font-weight: 400; text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.lesson a:not(.not-prose):hover { border-bottom-color: var(--accent); }
+.lesson :not(pre) > code { background: var(--sunken); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: .86em; color: var(--text); }
+.lesson ul, .lesson ol { margin: 14px 0; }
+.lesson li { margin: 6px 0; }
+.lesson blockquote { border-inline-start: 3px solid var(--line-strong); background: transparent; padding: 2px 0 2px 16px; margin: 20px 0; font-style: normal; color: var(--text2); }
+.lesson blockquote p { margin: 6px 0; }
+.lesson table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 22px 0; display: block; overflow-x: auto; }
+.lesson th { text-align: start; font: 400 11.5px var(--font-mono-latin), monospace; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+.lesson td { padding: 12px 14px 12px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.lesson figure.shiki, .lesson pre { background: var(--sunken); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; line-height: 1.65; }
+.lesson hr { border-color: var(--line); margin: 36px 0; }
+.side-dot { width: 6px; height: 6px; border-radius: 99px; background: var(--ok); flex: none; margin-top: 9px; }

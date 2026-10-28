@@ -13,11 +13,11 @@ import type { Lang } from '@/lib/i18n';
 import { cn } from '@/lib/cn';
 
 /** Top bar for every page: brand, three links, search, language, theme. `menu` is the mobile menu button. */
-export function SiteHeader({ lang, wide, menu }: { lang: Lang; wide?: boolean; menu: ReactNode }) {
+export function SiteHeader({ lang, menu }: { lang: Lang; menu: ReactNode }) {
   const pathname = usePathname();
   return (
     <header className="fixed inset-x-0 top-0 z-30 h-14 border-b border-fd-border bg-fd-background/90 backdrop-blur-sm">
-      <div className={cn('mx-auto flex h-full items-center gap-3 px-4 md:gap-5', wide ? 'max-w-[1280px] md:px-8' : 'max-w-[1080px] md:px-12')}>
+      <div className={cn('mx-auto flex h-full items-center gap-3 px-4 md:gap-5', 'max-w-[1080px] md:px-12')}>
         <Link href={`/${lang}`} className="brand shrink-0 whitespace-nowrap">
           <Logo />
           {appName}

@@ -1,6 +1,6 @@
 import type { Lang } from './i18n';
 
-/** The three top-bar links; services live in the lesson sidebar (docs/design/README.md, Navigation). */
+/** The three top-bar links; services live in the lesson sidebar (docs/README.md, Navigation). */
 const NAV: Record<Lang, { label: string; path: string }[]> = {
   en: [
     { label: 'Learning plan', path: 'learning-plan' },
