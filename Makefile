@@ -35,14 +35,14 @@ clean: ## Stop LocalStack and DELETE all data
 	rm -rf volume .localstack-data
 
 site-install: ## Install docs site dependencies (pnpm)
-	pnpm --dir website install
+	cd website && pnpm install
 
 site-dev: ## Run docs site dev server at http://localhost:4321
-	pnpm --dir website dev
+	cd website && pnpm dev
 
 site-build: ## Build the docs site (website/.next)
-	pnpm --dir website build
+	cd website && pnpm build
 
 site-lint: ## Lint and type-check the docs site (oxlint, tsc)
-	pnpm --dir website lint
-	pnpm --dir website types:check
+	cd website && pnpm lint
+	cd website && pnpm types:check
