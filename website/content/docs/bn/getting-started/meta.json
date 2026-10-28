@@ -1,0 +1,7 @@
+{
+  "title": "শুরু করা",
+  "pages": [
+    "localstack-compose",
+    "install-aws-cli"
+  ]
+}

@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://aws-with-localstack.vercel.app/sitemap-index.xml

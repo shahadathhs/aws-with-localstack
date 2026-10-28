@@ -40,8 +40,9 @@ site-install: ## Install docs site dependencies (pnpm)
 site-dev: ## Run docs site dev server at http://localhost:4321
 	pnpm --dir website dev
 
-site-build: ## Build docs site into website/dist
+site-build: ## Build the docs site (website/.next)
 	pnpm --dir website build
 
-site-lint: ## Lint + format-check the docs site (oxlint, eslint, prettier)
+site-lint: ## Lint and type-check the docs site (oxlint, tsc)
 	pnpm --dir website lint
+	pnpm --dir website types:check

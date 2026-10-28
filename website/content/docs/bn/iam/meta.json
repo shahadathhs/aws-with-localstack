@@ -1,0 +1,8 @@
+{
+  "title": "IAM",
+  "pages": [
+    "01-principals-users-roles",
+    "02-policies-and-evaluation",
+    "03-arns"
+  ]
+}
