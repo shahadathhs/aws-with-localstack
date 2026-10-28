@@ -47,7 +47,7 @@ services:
 
 ## What this repo uses (and why it differs slightly)
 
-Our [`compose.yaml`](https://github.com/shahadathhs/aws-with-localstack/blob/main/compose.yaml) is the official example with **one deviation**:
+Our [`compose.yaml`](https://github.com/shahadathhs/aws-with-localstack/blob/main/infra/compose.yaml) is the official example with **one deviation**:
 
 | Deviation                                        | Reason                                                                                                                |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |

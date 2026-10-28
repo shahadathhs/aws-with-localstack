@@ -1,5 +1,8 @@
 # AWS with LocalStack
 
+[![CI](https://github.com/shahadathhs/aws-with-localstack/actions/workflows/ci.yml/badge.svg)](https://github.com/shahadathhs/aws-with-localstack/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A local AWS sandbox: run real AWS APIs (S3, SQS, DynamoDB, Lambda, ...) on your machine via [LocalStack](https://localstack.cloud) — free, no AWS account, no costs.
 
 ## Prerequisites
@@ -63,7 +66,7 @@ Equivalent without a profile (e.g. for SDKs):
 
 ## Notes
 
-- **Version**: the image is pinned to `localstack/localstack:2026.9.0` (current latest) for reproducibility — bump the tag in `compose.yaml` to upgrade. This version requires a free LocalStack account token (`LOCALSTACK_AUTH_TOKEN` in `.env`, see [compose doc](website/content/docs/en/getting-started/localstack-compose.md#getting-your-token)).
+- **Version**: the image is pinned to `localstack/localstack:2026.9.0` (current latest) for reproducibility — bump the tag in `infra/compose.yaml` to upgrade. This version requires a free LocalStack account token (`LOCALSTACK_AUTH_TOKEN` in `.env`, see [compose doc](website/content/docs/en/getting-started/localstack-compose.md#getting-your-token)).
 - **Persistence**: resources are kept while the container lives; `make down` + `make up` loses them (persistence across restarts is a Pro feature). `make clean` wipes everything.
 - **Default region**: change it in `.env` (`AWS_DEFAULT_REGION`), then re-run `make setup-cli` if the profile already exists.
 
@@ -79,3 +82,11 @@ Track the full curriculum (concepts + experiments per service) in [`learning-pla
 - [ ] Phase 5 — CloudWatch + Secrets Manager
 - [ ] Phase 6 — Terraform
 - [ ] Phase 7 — Real AWS (free tier)
+
+## Contributing
+
+Issues and PRs are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md); report vulnerabilities per [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE) © Shahadat Hossain Sajib

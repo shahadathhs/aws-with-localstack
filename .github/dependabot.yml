@@ -1,0 +1,21 @@
+# Dependency updates, grouped into one PR per ecosystem per week.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    groups:
+      site-dev-tooling:
+        dependency-type: development
+  - package-ecosystem: docker
+    directory: /infra
+    schedule:
+      interval: weekly

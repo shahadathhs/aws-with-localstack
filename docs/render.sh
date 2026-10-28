@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Re-render every mockup in docs/design/mockups/src to a full-page PNG, light and dark (needs Google Chrome).
+# Re-render every mockup in docs/mockups/src to a full-page PNG, light and dark (needs Google Chrome).
 set -euo pipefail
 cd "$(dirname "$0")/mockups/src"
 CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
