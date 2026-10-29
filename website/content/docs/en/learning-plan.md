@@ -53,12 +53,12 @@ Everything here uses the REST API flavour of API Gateway, because that is what L
 
 ## Phase 4 — Messaging: SQS (deep) + SNS + EventBridge
 
-- SQS guarantees: **at-least-once delivery** → duplicates happen → consumers need idempotency
-- Visibility timeout: hidden while processing, reappears if not deleted
-- Standard vs FIFO; dead-letter queues as the parking lot after N failures
-- SNS fan-out vs SQS point-to-point; EventBridge routing
+16. [SQS delivery and visibility](/en/messaging/01-sqs-delivery/) — at-least-once; the visibility timeout; standard vs FIFO
+17. [Dead-letter queues](/en/messaging/02-dead-letter-queues/) — redrive policy; parking a poison message; ending the Lambda retry loop
+18. [SNS fan-out](/en/messaging/03-sns-fan-out/) — one publish, many queues; filter policies; raw delivery
+19. [EventBridge routing](/en/messaging/04-eventbridge/) — buses, rules and patterns; SNS or EventBridge
 
-Experiments: watch re-delivery after the visibility timeout; poison a message into a DLQ; fan out one SNS publish to two queues; wire an order API → SNS → two worker Lambdas.
+Experiments: watch re-delivery after the visibility timeout; poison a message into a DLQ; fan out one SNS publish to two queues; route events by content with an EventBridge rule.
 
 ## Phase 5 — Observability + config: CloudWatch + Secrets Manager
 

@@ -1,0 +1,153 @@
+---
+title: SQS delivery ও visibility
+description: SQS কখনো কথা দেয় না যে message ঠিক একবার পৌঁছাবে। একটি message-কে লুকাতে, ফিরে আসতে আর বেশি receive count নিয়ে আসতে দেখো, আর FIFO queue কীভাবে নিয়ম কড়া করে।
+time: ১১ মিনিট
+needs:
+  - SQS trigger
+learn:
+  - Visibility timeout কীভাবে message লুকায় আর ফিরিয়ে আনে
+  - At-least-once delivery মানে কেন consumer-কে idempotent হতে হয়
+  - FIFO queue কী যোগ করে, আর sender-এর কাছে কী চায়
+---
+
+## যে queue message ধার দেয়
+
+Queue কাজ ধরে রাখে যতক্ষণ না কোনো consumer তৈরি হয়। Consumer একটি message **receive** করলে SQS সেটি মুছে দেয় না: **visibility timeout** পর্যন্ত **লুকিয়ে** রাখে। Consumer-এর হাতে তখন ততক্ষণ সময় কাজ শেষ করে message **delete** করার। সময়মতো delete না করলে message আবার দৃশ্যমান হয় আর অন্য কারও কাছে যায়।
+
+এই নকশা একটি জিনিসের নিশ্চয়তা দেয় আর একটি অস্বীকার করে:
+
+- **At-least-once delivery**: queue যতক্ষণ message ধরে রাখে, তা হারায় না।
+- **Exactly-once** নয়: ধীর বা ক্র্যাশ করা consumer, বা খুব ছোট করে রাখা timeout মানে একই message আবার আসে। এ ছাড়াও standard queue কখনো কখনো একটি message দুবার দিতে পারে।
+
+তাই consumer-কে **idempotent** হতে হয়: একই message দুবার প্রসেস করলেও সিস্টেম এমন থাকবে যেন একবারই হয়েছে (যেমন message-এর id জমিয়ে বারবার এলে বাদ দিয়ে, বা key দিয়ে লিখে যাতে দ্বিতীয় লেখায় কিছু না বদলায়)।
+
+Queue তোমার জন্য চেষ্টার হিসাব রাখে: `ApproximateReceiveCount` attribute শুরু হয় ১ থেকে আর প্রতিটি receive-এ বাড়ে।
+
+## লুকাতে আর ফিরতে দেখো
+
+<Lab title="receive করো, অপেক্ষা করো, আবার receive করো" time="~৫ মিনিট">
+  <Predict>
+    একটি queue-র visibility timeout ৪ সেকেন্ড, আর তাতে একটি message। তুমি receive করলে, সঙ্গে সঙ্গে আবার করলে, ৫ সেকেন্ড অপেক্ষা করে তৃতীয়বার করলে। প্রতিটি receive কী ফেরত দেয়, আর শেষে receive count কত?
+    
+    <Answer>
+      প্রথম receive message দেয়, count **১**। দ্বিতীয়টি, ঠিক পরেই, **কিছুই** দেয় না: message লুকিয়ে আছে। Timeout পরে সেটি ফিরে আসে, আর তৃতীয় receive সেটি দেয় count **২** সহ। চিরতরে সরায় শুধু `delete-message`।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+QUEUE_URL=$(aws sqs create-queue --queue-name vis \
+  --attributes VisibilityTimeout=4 --query QueueUrl --output text)
+aws sqs send-message --queue-url "$QUEUE_URL" --message-body hello
+
+echo "receive 1:"
+aws sqs receive-message --queue-url "$QUEUE_URL" --attribute-names ApproximateReceiveCount \
+  --query 'Messages[0].[Body,Attributes.ApproximateReceiveCount]' --output text
+
+echo "receive 2, straight away (how many messages?):"
+aws sqs receive-message --queue-url "$QUEUE_URL" --query 'length(Messages || `[]`)' --output text
+
+sleep 5
+echo "receive 3, after the timeout:"
+aws sqs receive-message --queue-url "$QUEUE_URL" --attribute-names ApproximateReceiveCount \
+  --query 'Messages[0].[Body,Attributes.ApproximateReceiveCount]' --output text
+```
+<Output>
+```text
+receive 1:
+hello	1
+receive 2, straight away (how many messages?):
+0
+receive 3, after the timeout:
+hello	2
+```
+</Output>
+
+এবার কাজটি ঠিকভাবে শেষ করো। তৃতীয় receive-এর পর message আবার লুকিয়ে গেছে, তাই অপেক্ষা করো, চতুর্থবার receive করো, receipt handle দিয়ে delete করো, আর দেখো সেটি ফিরে আসে না।
+
+```sh
+sleep 5
+HANDLE=$(aws sqs receive-message --queue-url "$QUEUE_URL" \
+  --query 'Messages[0].ReceiptHandle' --output text)
+aws sqs delete-message --queue-url "$QUEUE_URL" --receipt-handle "$HANDLE"
+sleep 5
+aws sqs receive-message --queue-url "$QUEUE_URL" --query 'length(Messages || `[]`)' --output text
+```
+  </Run>
+  <Verify>
+    - Count চলে ১, তারপর কিছুই না, তারপর ২: যে message delete করা হয়নি সেটি ফিরে আসে
+    - `delete-message`-এর পাঁচ সেকেন্ড পরের receive কিছুই পায় না
+  </Verify>
+</Lab>
+
+## FIFO: ক্রম আর duplicate
+
+**Standard** queue দ্রুত আর ক্রম ঢিলেঢালা। **FIFO** queue (নাম `.fifo`-তে শেষ হতে হয়) একটি **message group**-এর ভেতরে ক্রম রাখে আর duplicate পাঠানো ফেলে দেয়।
+
+- **Message group id** আবশ্যক: এক group-এর message ক্রমানুসারে যায়, আর একটি group একসময়ে একজন consumer সামলায়। ভিন্ন group সমান্তরালে চলতে পারে।
+- **Deduplication id** একটি পাঠানোকে চিহ্নিত করে। একই id পাঁচ মিনিটের মধ্যে আবার এলে SQS কলটি মেনে নেয়, কিন্তু message একবারই পাঠায়। Content-based deduplication-এ id হয় body-র hash।
+
+<Lab title="duplicate পাঠানো, আর group না থাকা" time="~৪ মিনিট" collapsed>
+  <Predict>
+    FIFO queue-তে তুমি একই deduplication id দিয়ে `same` দুবার পাঠালে, তারপর নতুন id দিয়ে `second`। কয়টি message পৌঁছাবে, আর group id ছাড়া পাঠালে কী হবে?
+
+    <Answer>
+      **দুটি**: `same` একবার আর `second`, এই ক্রমে। `same`-এর দুই পাঠানোই একই message id ফেরত দেয়। Group id ছাড়া পাঠালে `MissingParameter` দিয়ে প্রত্যাখ্যাত হয়।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+FIFO_URL=$(aws sqs create-queue --queue-name orders.fifo \
+  --attributes FifoQueue=true,ContentBasedDeduplication=false --query QueueUrl --output text)
+
+aws sqs send-message --queue-url "$FIFO_URL" --message-body same \
+  --message-group-id g --message-deduplication-id dup1 --query MessageId --output text
+aws sqs send-message --queue-url "$FIFO_URL" --message-body same \
+  --message-group-id g --message-deduplication-id dup1 --query MessageId --output text
+aws sqs send-message --queue-url "$FIFO_URL" --message-body second \
+  --message-group-id g --message-deduplication-id dup2
+
+aws sqs receive-message --queue-url "$FIFO_URL" --max-number-of-messages 10 \
+  --query 'Messages[].Body' --output text
+
+aws sqs send-message --queue-url "$FIFO_URL" --message-body nogroup
+```
+<Output>
+```text
+# the message ids in your output differ
+0806286e-acea-402f-9147-bc97facab871
+0806286e-acea-402f-9147-bc97facab871
+same	second
+aws: [ERROR]: An error occurred (MissingParameter) when calling the SendMessage operation: The request must contain the parameter MessageGroupId.
+```
+</Output>
+  </Run>
+  <Verify>
+    - `same`-এর দুই পাঠানোই একই message id ছাপে
+    - Receive `same` একবার দেয়, তারপর `second`
+    - শেষ পাঠানোটি group id না থাকায় ব্যর্থ হয়
+  </Verify>
+</Lab>
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws cost title="Long polling টাকা বাঁচায়">
+  প্রতিটি receive একটি বিলযোগ্য অনুরোধ, আর কিছু না-পাওয়া short poll-ও একটির দাম নেয়। Wait time সেট করো (`--wait-time-seconds`, ২০ পর্যন্ত) যাতে receive ফাঁকা ফিরে না এসে message-এর জন্য অপেক্ষা করে। Lambda-র SQS poller এটি তোমার হয়ে করে।
+</RealAws>
+
+<RealAws title="FIFO throughput">
+  FIFO queue ক্রমের জন্য গতি ছাড়ে: standard queue-র চেয়ে তাদের throughput সীমা কম, আর একটি খুব ব্যস্ত message group শুধু পরপর consume করা যায়। ক্রম বা duplicate দমন জরুরি হলে FIFO, নইলে standard।
+</RealAws>
+
+<Note title="Timeout প্রসেসিং সময়ের ওপরে রাখো">
+  কাজের চেয়ে ছোট visibility timeout মানে প্রথম consumer ব্যস্ত থাকতেই message ফিরে আসে, আর দ্বিতীয় consumer একই কাজ শুরু করে। সবচেয়ে ধীর রানের চেয়ে বেশ ওপরে রাখো, আর কাজ লম্বা হলে consumer থেকে বাড়াও।
+</Note>
+
+<Recap>
+
+- Receive visibility timeout পর্যন্ত message লুকায়; শুধু delete সরায়, নইলে সেটি বেশি receive count নিয়ে ফিরে আসে।
+- Delivery at-least-once, তাই consumer-কে idempotent হতে হয়।
+- FIFO queue-তে group id লাগে, group-এর ভেতরে ক্রম থাকে, আর একই deduplication id বারবার এলে ফেলে দেয়।
+
+</Recap>

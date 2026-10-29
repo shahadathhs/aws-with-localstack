@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   icons: { icon: '/favicon.svg' },
   title: { default: appName, template: `%s | ${appName}` },
   description:
-    'Learn AWS for free with LocalStack: run S3, SQS, DynamoDB, Lambda and IAM locally in Docker Compose. No AWS account, no cloud bill.',
+    'Learn AWS for free with LocalStack: run S3, IAM, Lambda, API Gateway, DynamoDB, SQS, SNS and EventBridge locally in Docker Compose. No AWS account, no cloud bill.',
   openGraph: { type: 'website', siteName: appName, images: [{ url: '/og-default.png', width: 1200, height: 630 }] },
   twitter: { card: 'summary_large_image', images: ['/og-default.png'] },
   alternates: { languages: { en: '/en', bn: '/bn' } },

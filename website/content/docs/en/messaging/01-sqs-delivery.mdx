@@ -1,0 +1,153 @@
+---
+title: SQS delivery and visibility
+description: SQS never promises a message arrives exactly once. Watch a message hide, reappear and come back with a higher receive count, and see how FIFO queues tighten the rules.
+time: 11 min
+needs:
+  - SQS triggers
+learn:
+  - How the visibility timeout hides a message and brings it back
+  - Why at-least-once delivery means consumers must be idempotent
+  - What a FIFO queue adds, and what it asks of the sender
+---
+
+## A queue that lends messages
+
+A queue holds work until a consumer is ready. When a consumer **receives** a message, SQS does not remove it: it **hides** it for the **visibility timeout**. The consumer then has that long to finish and **delete** the message. If it does not delete in time, the message becomes visible again and goes to someone else.
+
+That design guarantees one thing and refuses another:
+
+- **At-least-once delivery**: a message is never lost while the queue holds it.
+- Not **exactly-once**: a slow or crashed consumer, or a timeout set too short, means the same message is delivered again. Even without that, a standard queue can occasionally deliver a message twice.
+
+So a consumer must be **idempotent**: processing the same message twice must leave the system as if it had been processed once (for example by storing the message's id and skipping repeats, or by writing with a key so the second write changes nothing).
+
+The queue counts attempts for you: the `ApproximateReceiveCount` attribute starts at 1 and rises with every receive.
+
+## Watch it hide and come back
+
+<Lab title="receive, wait, receive again" time="~5 min">
+  <Predict>
+    A queue has a 4-second visibility timeout and holds one message. You receive it, receive again immediately, wait 5 seconds, and receive a third time. What does each receive return, and what is the receive count at the end?
+
+    <Answer>
+      The first receive returns the message with count **1**. The second, immediately after, returns **nothing**: the message is hidden. After the timeout it reappears, and the third receive returns it with count **2**. Only a `delete-message` removes it for good.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+QUEUE_URL=$(aws sqs create-queue --queue-name vis \
+  --attributes VisibilityTimeout=4 --query QueueUrl --output text)
+aws sqs send-message --queue-url "$QUEUE_URL" --message-body hello
+
+echo "receive 1:"
+aws sqs receive-message --queue-url "$QUEUE_URL" --attribute-names ApproximateReceiveCount \
+  --query 'Messages[0].[Body,Attributes.ApproximateReceiveCount]' --output text
+
+echo "receive 2, straight away (how many messages?):"
+aws sqs receive-message --queue-url "$QUEUE_URL" --query 'length(Messages || `[]`)' --output text
+
+sleep 5
+echo "receive 3, after the timeout:"
+aws sqs receive-message --queue-url "$QUEUE_URL" --attribute-names ApproximateReceiveCount \
+  --query 'Messages[0].[Body,Attributes.ApproximateReceiveCount]' --output text
+```
+<Output>
+```text
+receive 1:
+hello	1
+receive 2, straight away (how many messages?):
+0
+receive 3, after the timeout:
+hello	2
+```
+</Output>
+
+Now finish the job properly. The message is hidden again after that third receive, so wait for it, receive it a fourth time, delete it with its receipt handle, and check that it does not come back.
+
+```sh
+sleep 5
+HANDLE=$(aws sqs receive-message --queue-url "$QUEUE_URL" \
+  --query 'Messages[0].ReceiptHandle' --output text)
+aws sqs delete-message --queue-url "$QUEUE_URL" --receipt-handle "$HANDLE"
+sleep 5
+aws sqs receive-message --queue-url "$QUEUE_URL" --query 'length(Messages || `[]`)' --output text
+```
+  </Run>
+  <Verify>
+    - The count goes 1, then nothing, then 2: a message that is not deleted comes back
+    - After `delete-message`, a receive five seconds later finds nothing
+  </Verify>
+</Lab>
+
+## FIFO: order and duplicates
+
+A **standard** queue is fast and loosely ordered. A **FIFO** queue (its name must end in `.fifo`) keeps messages in order within a **message group** and drops duplicate sends.
+
+- A **message group id** is required: messages in one group are delivered in order, and one group is handled by one consumer at a time. Different groups can run in parallel.
+- A **deduplication id** identifies a send. If the same id arrives again within five minutes, SQS accepts the call but delivers the message only once. With content-based deduplication the id is a hash of the body.
+
+<Lab title="a duplicate send, and a missing group" time="~4 min" collapsed>
+  <Predict>
+    On a FIFO queue you send `same` twice with the same deduplication id, then `second` with a new one. How many messages are delivered, and what happens if you send with no group id?
+
+    <Answer>
+      **Two**: `same` once and `second`, in that order. Both sends of `same` return the same message id. A send with no group id is refused with `MissingParameter`.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+FIFO_URL=$(aws sqs create-queue --queue-name orders.fifo \
+  --attributes FifoQueue=true,ContentBasedDeduplication=false --query QueueUrl --output text)
+
+aws sqs send-message --queue-url "$FIFO_URL" --message-body same \
+  --message-group-id g --message-deduplication-id dup1 --query MessageId --output text
+aws sqs send-message --queue-url "$FIFO_URL" --message-body same \
+  --message-group-id g --message-deduplication-id dup1 --query MessageId --output text
+aws sqs send-message --queue-url "$FIFO_URL" --message-body second \
+  --message-group-id g --message-deduplication-id dup2
+
+aws sqs receive-message --queue-url "$FIFO_URL" --max-number-of-messages 10 \
+  --query 'Messages[].Body' --output text
+
+aws sqs send-message --queue-url "$FIFO_URL" --message-body nogroup
+```
+<Output>
+```text
+# the message ids in your output differ
+0806286e-acea-402f-9147-bc97facab871
+0806286e-acea-402f-9147-bc97facab871
+same	second
+aws: [ERROR]: An error occurred (MissingParameter) when calling the SendMessage operation: The request must contain the parameter MessageGroupId.
+```
+</Output>
+  </Run>
+  <Verify>
+    - Both sends of `same` print the same message id
+    - The receive returns `same` once, then `second`
+    - The last send fails for the missing group id
+  </Verify>
+</Lab>
+
+## What changes on real AWS
+
+<RealAws cost title="Long polling saves money">
+  Every receive is a billed request, and a short poll that finds nothing still costs one. Set a wait time (`--wait-time-seconds`, up to 20) so a receive waits for a message instead of returning empty. Lambda's SQS poller does this for you.
+</RealAws>
+
+<RealAws title="FIFO throughput">
+  FIFO queues trade speed for order: they have lower throughput limits than standard queues, and one very busy message group can only be consumed serially. Use FIFO when order or duplicate suppression matters, and standard otherwise.
+</RealAws>
+
+<Note title="Set the timeout above your processing time">
+  A visibility timeout shorter than the work means the message reappears while the first consumer is still busy, and a second consumer starts the same job. Choose it comfortably above the slowest run, and extend it from the consumer if a job runs long.
+</Note>
+
+<Recap>
+
+- Receiving hides a message for the visibility timeout; only deleting it removes it, otherwise it comes back with a higher receive count.
+- Delivery is at-least-once, so a consumer must be idempotent.
+- FIFO queues need a group id, keep order within a group and drop repeated deduplication ids.
+
+</Recap>

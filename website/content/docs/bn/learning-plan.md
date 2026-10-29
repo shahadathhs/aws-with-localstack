@@ -51,14 +51,14 @@ IAM:
 
 এখানে সবকিছু API Gateway-র REST API ধরন ব্যবহার করে, কারণ LocalStack সেটিই চালায়। এক্সপেরিমেন্ট: একটি tasks API বানানো (`POST/GET/DELETE /tasks`) আর curl দিয়ে ডাকা; key দিয়ে query বনাম পুরো scan; GSI যোগ করে non-key attribute-এ query।
 
-## Phase 4 — মেসেজিং: SQS (ডিপ) + SNS + EventBridge
+## Phase 4 — মেসেজিং: SQS (গভীর) + SNS + EventBridge
 
-- SQS গ্যারান্টি: **at-least-once delivery** → duplicate হবেই → consumer idempotent হতে হবে
-- Visibility timeout: প্রসেসিংয়ের সময় লুকানো, ডিলিট না করলে আবার দেখা যায়
-- Standard বনাম FIFO; DLQ — N বার ব্যর্থতার পর parking lot
-- SNS fan-out বনাম SQS point-to-point; EventBridge routing
+16. [SQS delivery ও visibility](/bn/messaging/01-sqs-delivery/) — at-least-once; visibility timeout; standard বনাম FIFO
+17. [Dead-letter queue](/bn/messaging/02-dead-letter-queues/) — redrive policy; poison message পার্ক করা; Lambda-র retry চক্র শেষ করা
+18. [SNS fan-out](/bn/messaging/03-sns-fan-out/) — একটি publish, অনেক queue; filter policy; raw delivery
+19. [EventBridge routing](/bn/messaging/04-eventbridge/) — bus, rule ও pattern; SNS না EventBridge
 
-এক্সপেরিমেন্ট: visibility timeout শেষে re-delivery দেখা; poison message DLQ-তে পাঠানো; একটি SNS publish দুটি queue-তে; order API → SNS → দুটি worker Lambda।
+এক্সপেরিমেন্ট: visibility timeout-এর পর re-delivery দেখা; poison message DLQ-তে পাঠানো; একটি SNS publish দুটি queue-তে fan-out; EventBridge rule দিয়ে বিষয়বস্তু দেখে event route করা।
 
 ## Phase 5 — Observability ও কনফিগ: CloudWatch + Secrets Manager
 

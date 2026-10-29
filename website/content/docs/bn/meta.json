@@ -5,6 +5,7 @@
     "s3",
     "iam",
     "lambda",
-    "serverless"
+    "serverless",
+    "messaging"
   ]
 }

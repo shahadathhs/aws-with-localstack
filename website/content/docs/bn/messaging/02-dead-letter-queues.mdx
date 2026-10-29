@@ -1,0 +1,160 @@
+---
+title: Dead-letter queue
+description: যে message সবসময় ব্যর্থ হয় সে অনন্তকাল ঘুরত। Dead-letter queue হলো সেই জায়গা যেখানে SQS নির্দিষ্টবার চেষ্টার পর সেটি সরায়, যাতে হারিয়ে না গিয়ে তুমি সেটি দেখতে পারো।
+time: ১১ মিনিট
+needs:
+  - SQS delivery ও visibility
+  - SQS trigger
+learn:
+  - maxReceiveCount কীভাবে ঠিক করে কখন message সরানো হবে
+  - Dead-letter queue-তে কী যায় আর কী যায় না
+  - Lambda consumer-এর অন্তহীন retry চক্র কীভাবে শেষ হয়
+---
+
+## বিষাক্তকে পার্ক করা
+
+[SQS trigger পাঠে](/bn/lambda/03-sqs-triggers/) সবসময় ব্যর্থ হওয়া একটি message চিরকাল ফিরে আসছিল। সমাধান **dead-letter queue** (DLQ): একটি সাধারণ queue, যার নাম তুমি source queue-র **redrive policy**-তে দাও। Policy-র দুটি অংশ:
+
+- `deadLetterTargetArn`: message কোথায় সরবে।
+- `maxReceiveCount`: সরানোর আগে message কতবার receive হতে পারে।
+
+Delete দিয়ে শেষ না হওয়া প্রতিটি receive গোনা হয়। Message যখন `maxReceiveCount + 1`-তম বার receive হতে যায়, SQS তখন সেটি DLQ-তে সরিয়ে দেয়। কিছুই হারায় না, আর মূল queue আবার পরিষ্কার। তারপর একজন মানুষ বা মেরামতের কাজ DLQ পড়ে, ব্যর্থতার কারণ খোঁজে, আর সিদ্ধান্ত নেয় কী করবে।
+
+## একটি poison message, পার্ক করা
+
+<Lab title="সরে যাওয়া পর্যন্ত receive করো" time="~৫ মিনিট">
+  <Predict>
+    Source queue-র `maxReceiveCount` ২, আর visibility timeout ২ সেকেন্ড। তাতে একটি message রেখে তুমি কখনো delete না করে বারবার receive করো। কোন receive-গুলোতে সেটি পাবে, আর পরে সেটি কোথায়?
+
+    <Answer>
+      **প্রথম দুটি** receive-এ। তৃতীয় receive queue ফাঁকা পায়, কারণ message সরে গেছে। এখন সেটি dead-letter queue-তে, body অপরিবর্তিত।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+DLQ_URL=$(aws sqs create-queue --queue-name jobs-dlq --query QueueUrl --output text)
+DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$DLQ_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+
+JOBS_URL=$(aws sqs create-queue --queue-name jobs --attributes '{
+  "VisibilityTimeout": "2",
+  "RedrivePolicy": "{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"2\"}"
+}' --query QueueUrl --output text)
+
+aws sqs send-message --queue-url "$JOBS_URL" --message-body poison
+```
+
+Redrive policy একটি JSON মানের ভেতরে JSON string, তাই quote escape করা। কখনো delete না করে তিনবার receive করো:
+
+```sh
+for attempt in 1 2 3; do
+  echo "receive $attempt:"
+  aws sqs receive-message --queue-url "$JOBS_URL" --wait-time-seconds 3 \
+    --query 'Messages[0].Body' --output text
+  sleep 3
+done
+
+echo "in the dead-letter queue:"
+aws sqs receive-message --queue-url "$DLQ_URL" --wait-time-seconds 2 \
+  --query 'Messages[0].Body' --output text
+```
+<Output>
+```text
+receive 1:
+poison
+receive 2:
+poison
+receive 3:
+None
+in the dead-letter queue:
+poison
+```
+</Output>
+  </Run>
+  <Verify>
+    - Receive ১ ও ২ `poison` দেয়; receive ৩ দেয় `None`
+    - Dead-letter queue-তে এখন `poison` আছে
+  </Verify>
+</Lab>
+
+## Lambda-র চক্র বন্ধ করা
+
+<Lab title="ব্যর্থ Lambda consumer, DLQ-র হাতে শেষ" time="~৬ মিনিট" collapsed>
+  <Predict>
+    SQS trigger পাঠের `batcher` ফাংশন তুমি আবার ব্যবহার করছ, যে প্রতিবার `bad`-কে ব্যর্থ জানায়। Source queue-র DLQ আছে, `maxReceiveCount` ৩। তুমি `ok1`, `bad` ও `ok2` একসঙ্গে পাঠালে। `bad` কতবার পৌঁছাবে, আর শেষে কোথায়?
+
+    <Answer>
+      **তিনবার** (একবার তিনটির batch-এ, তারপর দুবার একা), এরপর সেটি DLQ-তে। `ok1` ও `ok2` একবার প্রসেস হয়ে মুছে যায়। আগের পাঠে যে চক্র থামত না, তা এখন নিজেই থামে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$DLQ_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+aws sqs purge-queue --queue-url "$DLQ_URL"
+
+WORK_URL=$(aws sqs create-queue --queue-name work2 --attributes '{
+  "VisibilityTimeout": "3",
+  "RedrivePolicy": "{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"
+}' --query QueueUrl --output text)
+WORK_ARN=$(aws sqs get-queue-attributes --queue-url "$WORK_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+
+aws lambda create-event-source-mapping --function-name batcher \
+  --event-source-arn "$WORK_ARN" --batch-size 10 \
+  --function-response-types ReportBatchItemFailures
+sleep 2
+
+aws sqs send-message-batch --queue-url "$WORK_URL" --entries '[
+  {"Id":"1","MessageBody":"ok1"},
+  {"Id":"2","MessageBody":"bad"},
+  {"Id":"3","MessageBody":"ok2"}
+]'
+sleep 25
+
+aws logs tail /aws/lambda/batcher --since 1m --format short | grep "batch of"
+aws sqs receive-message --queue-url "$DLQ_URL" --wait-time-seconds 2 \
+  --query 'Messages[].Body' --output text
+```
+<Output>
+```text
+2026-10-29T05:28:17 batch of 3: ok1, bad, ok2
+2026-10-29T05:28:20 batch of 1: bad
+2026-10-29T05:28:24 batch of 1: bad
+bad
+```
+</Output>
+  </Run>
+  <Verify>
+    - `bad` তিনটি লগ লাইনে আছে, শেষ দুটি একা, তারপর আর নেই
+    - Dead-letter queue-তে `bad` আছে; `ok1` ও `ok2` নেই
+  </Verify>
+</Lab>
+
+<Destructive>
+  এই mapping চলতেই থাকে। শেষ হলে সরাও: `aws lambda list-event-source-mappings --function-name batcher` তার UUID দেখায়, আর `aws lambda delete-event-source-mapping --uuid <UUID>` সেটি মুছে দেয়।
+</Destructive>
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws title="DLQ-তে alarm বসাও">
+  যে dead-letter queue কেউ দেখে না সেটি নীরব ডেটা-ক্ষতি। রিয়েল AWS-এ এর `ApproximateNumberOfMessagesVisible` metric-এ একটি alarm বসাও, যাতে সেখানে message এলে কাউকে জানানো হয়। DLQ-র retention source queue-র চেয়ে বেশি রাখো, কারণ message-এর আসল বয়স গোনা চলতে থাকে।
+</RealAws>
+
+<RealAws title="Redrive">
+  বাগ ঠিক করার পর রিয়েল AWS একটি operation-এ DLQ থেকে message আবার source queue-তে সরিয়ে দিতে পারে, তাই হাতে আবার পাঠাতে হয় না।
+</RealAws>
+
+<Note title="maxReceiveCount ভেবেচিন্তে বাছো">
+  খুব কম হলে নির্ভরশীল কিছুর ছোট বিভ্রাটে সুস্থ message DLQ-তে যায়; খুব বেশি হলে poison message আগে অনেক retry নষ্ট করে। তিন থেকে পাঁচ সাধারণ শুরু। FIFO source queue-র জন্য FIFO dead-letter queue লাগে।
+</Note>
+
+<Recap>
+
+- Redrive policy একটি dead-letter queue আর একটি `maxReceiveCount` বলে দেয়; delete ছাড়া এতবার receive হলে SQS message সরায়।
+- DLQ ব্যর্থ message অক্ষত রাখে যাতে পরীক্ষা করা যায়, আর মূল queue চলতে থাকে।
+- `batchItemFailures`-এর সঙ্গে মিলে এটি Lambda-র অন্তহীন retry চক্রকে সীমিত করে।
+
+</Recap>
