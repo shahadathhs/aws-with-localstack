@@ -60,13 +60,13 @@ IAM:
 
 এক্সপেরিমেন্ট: visibility timeout-এর পর re-delivery দেখা; poison message DLQ-তে পাঠানো; একটি SNS publish দুটি queue-তে fan-out; EventBridge rule দিয়ে বিষয়বস্তু দেখে event route করা।
 
-## Phase 5 — Observability ও কনফিগ: CloudWatch + Secrets Manager
+## Phase 5 — Observability ও config: CloudWatch + Secrets Manager
 
-- Log একটি প্রোডাক্ট: log group বনাম stream, retention, Insights query
-- Metrics ও alarm; scale-এ structured (JSON) logging
-- Runtime config বনাম build-time config; secret কখনো env var-এ baked থাকবে না
+20. [Product হিসেবে লগ](/bn/observability/01-logs/) — log group ও stream; কাঠামোবদ্ধ লগ; Logs Insights; retention
+21. [Metric ও alarm](/bn/observability/02-metrics-and-alarms/) — period-এর ওপর statistics; threshold ও alarm state
+22. [Config ও secret](/bn/observability/03-config-and-secrets/) — secret version; runtime-এ পড়া ও cache; Parameter Store
 
-এক্সপেরিমেন্ট: Phase-3 API-তে structured logging, `logs filter-log-events` দিয়ে query; secret রেখে Lambda থেকে runtime-এ পড়া।
+এই সেটআপে LocalStack CloudWatch Logs-এর filter pattern বা metric filter প্রয়োগ করে না, তাই পাঠগুলো লগ query করে Logs Insights দিয়ে। এক্সপেরিমেন্ট: কাঠামোবদ্ধ লগ লিখে query করা; একটি metric publish করে alarm বাজানো; একটি secret রেখে Lambda থেকে runtime-এ পড়া।
 
 ## Phase 6 — Infrastructure as Code: Terraform
 

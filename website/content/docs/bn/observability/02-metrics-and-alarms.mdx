@@ -1,0 +1,147 @@
+---
+title: Metric ও alarm
+description: Metric হলো সময়ের সঙ্গে একটি সংখ্যা। Alarm একটি দেখে আর সীমা পেরোলে অবস্থা বদলায়। একটি custom metric publish করো, তার statistics পড়ো আর একটি alarm বাজতে দেখো।
+time: ১১ মিনিট
+needs:
+  - Product হিসেবে লগ
+learn:
+  - Data point কীভাবে একটি period-এ statistics হয়
+  - Alarm কীভাবে statistic-কে threshold-এর সঙ্গে তুলনা করে
+  - Alarm কোন অবস্থায় থাকতে পারে আর কেন
+---
+
+## সময়ের সঙ্গে সংখ্যা
+
+লগ বলে কী ঘটেছে। **Metric** বলে কতটা, এমন রূপে যা graph ও alert করা যায়: অর্ডারের সংখ্যা, queue-র গভীরতা, মিনিটে error। অনেক AWS সার্ভিস তোমার জন্য metric publish করে; তোমার নিজের কোড **custom metric** publish করতে পারে।
+
+Metric-এর নাম ঠিক হয় একটি **namespace** (যেমন `Shop` গোষ্ঠী) আর একটি **metric name** (`Orders`) দিয়ে। তুমি **data point** পাঠাও: একটি মান, একটি unit ও একটি timestamp। CloudWatch তারপর একটি **period**-এর ওপর **statistics** হিসেবে উত্তর দেয়: `Sum`, `Average`, `Minimum`, `Maximum` ও `SampleCount`। এক ঘণ্টার period চাইলে কয়টি point এসেছে তা নির্বিশেষে ঘণ্টায় একটি সংখ্যা পাও।
+
+**Alarm** একটি statistic দেখে। প্রতি period-এ সেটি মানকে **threshold**-এর সঙ্গে তুলনা করে আর নিজের **state** ঠিক করে:
+
+- `OK`: মান রেখার সঠিক দিকে।
+- `ALARM`: রেখা পেরিয়েছে।
+- `INSUFFICIENT_DATA`: বলার মতো যথেষ্ট ডেটা নেই।
+
+State বদলালে alarm একটি SNS topic-কে জানাতে পারে, যেভাবে একটি metric মানুষ বা Lambda ফাংশনের কাছে message হয়ে পৌঁছায়।
+
+## Publish, পড়ো, alarm
+
+<Lab title="দুটি data point, একটি sum" time="~৪ মিনিট">
+  <Predict>
+    তুমি `Shop` / `Orders`-এ ৩ ও ৫ মান publish করলে, তারপর এক ঘণ্টার period-এ `Sum`, `Average` ও `SampleCount` চাইলে। কী পাবে?
+
+    <Answer>
+      Period-এর জন্য একটি data point: `Sum` **৮**, `Average` **৪**, `SampleCount` **২**। মান দুটি statistics-এ মিশে যায়; আলাদা point-গুলো আর থাকে না।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+aws cloudwatch put-metric-data --namespace Shop --metric-name Orders --value 3 --unit Count
+aws cloudwatch put-metric-data --namespace Shop --metric-name Orders --value 5 --unit Count
+
+aws cloudwatch list-metrics --namespace Shop --query 'Metrics[].MetricName' --output text
+
+START=$(python3 -c "import datetime as d; print((d.datetime.now(d.timezone.utc) - d.timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+END=$(python3 -c "import datetime as d; print((d.datetime.now(d.timezone.utc) + d.timedelta(minutes=5)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+aws cloudwatch get-metric-statistics --namespace Shop --metric-name Orders \
+  --start-time "$START" --end-time "$END" --period 3600 \
+  --statistics Sum Average SampleCount \
+  --query 'Datapoints[0].[Sum,Average,SampleCount]' --output text
+```
+<Output>
+```text
+Orders
+8.0	4.0	2.0
+```
+</Output>
+  </Run>
+  <Verify>
+    - `Orders` `Shop` namespace-এর নিচে তালিকাভুক্ত
+    - Statistics হলো Sum ৮, Average ৪, SampleCount ২
+  </Verify>
+</Lab>
+
+<Lab title="যে alarm বাজে" time="~৪ মিনিট">
+  <Predict>
+    একটি alarm ৬০ সেকেন্ডের period-এ `Shop` / `Orders`-এর `Sum` দেখে, threshold *৬-এর বেশি*। তুমি আরও ১০ publish করে বারবার alarm দেখলে। কোন অবস্থায় পৌঁছায়, আর কখন?
+
+    <Answer>
+      শেষে **ALARM**। আগের ল্যাবের ৩ ও ৫, আর এখন যোগ করা ১০, সবই একই মিনিটে পড়ে, তাই যোগফল ৬-এর অনেক ওপরে। এখানে আসতে মিনিটের বেশি লাগলে পুরোনো point-গুলো মেয়াদ পেরিয়ে গেছে আর alarm-এর একটু সময় লাগে: alarm মূল্যায়ন হয় নির্দিষ্ট বিরতিতে, তাই state ডেটার থেকে কয়েক সেকেন্ড থেকে এক মিনিট পিছিয়ে থাকে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+aws cloudwatch put-metric-alarm --alarm-name many-orders \
+  --namespace Shop --metric-name Orders --statistic Sum --period 60 \
+  --evaluation-periods 1 --threshold 6 \
+  --comparison-operator GreaterThanThreshold --treat-missing-data notBreaching
+
+aws cloudwatch put-metric-data --namespace Shop --metric-name Orders --value 10 --unit Count
+
+for i in 1 2 3 4 5 6; do
+  aws cloudwatch describe-alarms --alarm-names many-orders \
+    --query 'MetricAlarms[0].StateValue' --output text
+  sleep 10
+done
+```
+<Output>
+```text
+# if the earlier data is more than a minute old you first see OK for a while
+ALARM
+ALARM
+ALARM
+ALARM
+ALARM
+ALARM
+```
+</Output>
+  </Run>
+  <Verify>
+    - State শেষে `ALARM`, হয়তো আগে কয়েকটি `OK` লাইনের পর
+    - `aws cloudwatch describe-alarm-history --alarm-name many-orders` প্রতিটি state পরিবর্তন তালিকাভুক্ত করে
+  </Verify>
+</Lab>
+
+<Lab title="alarm কী করে তা পরীক্ষা" time="~২ মিনিট" collapsed>
+  <Predict>
+    আসল ডেটার অপেক্ষা না করে তোমার notification সেটআপ কী করে তা দেখতে চাও। Alarm-কে কীভাবে একটি state-এ ঠেলে দেবে?
+
+    <Answer>
+      `set-alarm-state` কারণসহ state বদলে দেয় এবং alarm-এর action চালায় যেন metric সীমা পেরিয়েছে। পরের মূল্যায়ন আবার ডেটা অনুযায়ী state ঠিক করে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+aws cloudwatch set-alarm-state --alarm-name many-orders --state-value OK --state-reason "testing"
+aws cloudwatch describe-alarms --alarm-names many-orders \
+  --query 'MetricAlarms[0].[StateValue,StateReason]' --output text
+```
+  </Run>
+  <Verify>
+    - State `OK` আর কারণ `testing`
+  </Verify>
+</Lab>
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws cost title="Custom metric-এর দাম প্রতি metric">
+  প্রতিটি আলাদা metric (একটি নাম আর তার dimension) মাসিক বিল হয়, তাই ইউজার id-র মতো high-cardinality dimension যোগ করলে বিল গুণ হয়। বেশিরভাগ সার্ভিসের standard AWS metric বিনামূল্যে, আর alarm বিল হয় প্রতি alarm-এ।
+</RealAws>
+
+<RealAws title="Alarm action">
+  আসল alarm সাধারণত `ALARM`-এ, আর প্রায়ই `OK`-তেও, একটি SNS topic-কে জানায়। SNS পাঠের সঙ্গে জোড়ো: topic, তারপর queue, ইমেইল বা Lambda। Resolution-ও গুরুত্বপূর্ণ: standard metric আসে এক মিনিটের granularity-তে, আর বিরল ডেটায় ছোট alarm period `OK` ও `INSUFFICIENT_DATA`-র মধ্যে দুলতে থাকে।
+</RealAws>
+
+<Note title="খাপ খাওয়া statistic বাছো">
+  `Sum` গণনার (অর্ডার, error) জন্য, `Average` latency-র জন্য, আর p99-এর মতো percentile লেজের latency-র জন্য। Average অনেক দ্রুত অনুরোধের মধ্যে কয়েকটি ভয়ংকর অনুরোধ লুকিয়ে ফেলে।
+</Note>
+
+<Recap>
+
+- Metric-এর নাম namespace ও name দিয়ে; CloudWatch data point-কে period-এর ওপর statistics-এ বদলায়।
+- Alarm প্রতি period-এ statistic-কে threshold-এর সঙ্গে তুলনা করে, আর থাকে `OK`, `ALARM` বা `INSUFFICIENT_DATA`-তে।
+- State ডেটার পিছনে থাকে, আর `set-alarm-state` পরিবর্তনে কী ঘটে তা পরীক্ষা করতে দেয়।
+
+</Recap>

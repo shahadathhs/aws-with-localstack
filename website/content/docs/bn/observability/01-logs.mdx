@@ -1,0 +1,137 @@
+---
+title: Product হিসেবে লগ
+description: CloudWatch Logs তোমার কোডের ছাপানো সবকিছু গোষ্ঠীবদ্ধ ও খোঁজার উপযোগী করে রাখে। কাঠামোবদ্ধ লগ লাইন লেখো আর Logs Insights দিয়ে তাতে প্রশ্ন করো।
+time: ১১ মিনিট
+needs:
+  - Event object
+learn:
+  - Log group ও log stream কীভাবে সাজানো
+  - প্রতি লাইনে একটি JSON object কেন লগকে query-যোগ্য করে
+  - Logs Insights দিয়ে লগ লাইন কীভাবে গুনবে ও ছাঁকবে
+---
+
+## আউটপুট কোথায় যায়
+
+Lambda ফাংশনের প্রতিটি `print`, আর অ্যাপ্লিকেশন CloudWatch Logs-এ যে লাইন পাঠায়, সবই একটি **log event** হয়: একটি timestamp আর একটি message। Event-গুলো দুই স্তরে সাজানো:
+
+- **Log group**: একটি অ্যাপ্লিকেশন বা ফাংশনের সংগ্রহ, যেমন `/aws/lambda/show`। Retention, অ্যাক্সেস ও query ঠিক হয় group ধরে।
+- **Log stream**: group-এর ভেতরের একটি উৎস, যেমন একটি ফাংশন instance বা একটি সার্ভার। Stream-এর ভেতরে event সময় অনুযায়ী সাজানো।
+
+Lambda ফাংশন প্রথমবার চললে তোমার জন্য `/aws/lambda/<function>` বানিয়ে দেয়, আর তাই আগের পাঠগুলোয় `aws logs tail` কাজ করেছিল।
+
+দুটি অভ্যাস লগকে শুধু উপস্থিত নয়, কাজের করে তোলে:
+
+- **কাঠামোবদ্ধ লাইন।** মুক্ত লেখার বদলে প্রতি লাইনে একটি JSON object লেখো (`{"level":"error","msg":"payment failed","orderId":2}`)। ফিল্ডগুলো এমন কিছু হয় যা query ছাঁকতে ও গুনতে পারে।
+- **Retention।** ডিফল্টে group চিরকাল event রাখে, যা বেড়ে চলা বিল। কতদিন পিছনে তাকাতে হয় তার উপযোগী retention সেট করো।
+
+## কাঠামোবদ্ধ লগ লেখো আর query করো
+
+Event তুমি হাতে লিখবে, যা তোমার অ্যাপ্লিকেশনের জন্য agent বা লাইব্রেরি করে, তারপর CloudWatch-এর query ভাষা **Logs Insights** দিয়ে প্রশ্ন করবে।
+
+<Lab title="লগ করো, query করো, গোনো" time="~৬ মিনিট">
+  <Predict>
+    তুমি একটি log group-এ দুটি event লিখলে: একটি `info` লাইন ও একটি `error` লাইন, দুটিই JSON। তারপর একটি Insights query চালালে যা শুধু `level = "error"` লাইন রাখে, আর দ্বিতীয়টি `level` ধরে লাইন গোনে। প্রতিটি কী ফেরত দেয়?
+
+    <Answer>
+      প্রথমটি **একটি** সারি ফেরত দেয়: error লাইনটি। দ্বিতীয়টি **দুটি** সারি দেয়, প্রতি level-এ একটি, প্রতিটির count ১। তুমি schema ঘোষণা না করেই Insights JSON ফিল্ড (`level`) পড়ে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+aws logs create-log-group --log-group-name /app/shop
+aws logs create-log-stream --log-group-name /app/shop --log-stream-name web-1
+
+NOW=$(( $(date +%s) * 1000 ))
+cat > /tmp/events.json <<EOF
+[
+  {"timestamp": $NOW, "message": "{\"level\":\"info\",\"msg\":\"order placed\",\"orderId\":1}"},
+  {"timestamp": $((NOW + 1)), "message": "{\"level\":\"error\",\"msg\":\"payment failed\",\"orderId\":2}"}
+]
+EOF
+aws logs put-log-events --log-group-name /app/shop --log-stream-name web-1 \
+  --log-events file:///tmp/events.json
+```
+
+Log event-এর timestamp মিলিসেকেন্ডে, তাই `NOW`-কে ১০০০ দিয়ে গুণ করা। এবার দুটি প্রশ্ন করো। Insights query অ্যাসিঙ্ক্রোনাস: তুমি শুরু করো, তারপর ফলাফল আনো।
+
+```sh
+START=$(( $(date +%s) - 300 ))
+END=$(( $(date +%s) + 60 ))
+
+QUERY_ID=$(aws logs start-query --log-group-name /app/shop --start-time $START --end-time $END \
+  --query-string 'fields @message | filter level = "error"' --query queryId --output text)
+sleep 2
+echo "errors only:"
+aws logs get-query-results --query-id "$QUERY_ID" --query 'results[*][0].value' --output text
+
+QUERY_ID=$(aws logs start-query --log-group-name /app/shop --start-time $START --end-time $END \
+  --query-string 'stats count(*) by level' --query queryId --output text)
+sleep 2
+echo "count by level:"
+aws logs get-query-results --query-id "$QUERY_ID" --query 'results[*][*].value' --output text
+```
+<Output>
+```text
+errors only:
+{"level":"error","msg":"payment failed","orderId":2}
+count by level:
+error	1
+info	1
+```
+</Output>
+  </Run>
+  <Verify>
+    - প্রথম query শুধু `payment failed` লাইনটি ছাপে
+    - দ্বিতীয়টি প্রতি level-এ একটি সারি ছাপে, প্রতিটির count ১
+  </Verify>
+</Lab>
+
+<Lab title="লগ রাখো শুধু যতদিন দরকার" time="~২ মিনিট" collapsed>
+  <Predict>
+    Group-এ তুমি ৭ দিনের retention সেট করলে। সেটিং কীভাবে ফিরে পড়বে, আর সেট করার আগে সেটি কী ছিল?
+
+    <Answer>
+      `describe-log-groups` `retentionInDays` দেখায়। সেট করার আগে ফিল্ডটি অনুপস্থিত: group event **চিরকাল** রাখে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+aws logs describe-log-groups --log-group-name-prefix /app --query 'logGroups[0].retentionInDays'
+aws logs put-retention-policy --log-group-name /app/shop --retention-in-days 7
+aws logs describe-log-groups --log-group-name-prefix /app --query 'logGroups[0].retentionInDays'
+```
+<Output>
+```text
+null
+7
+```
+</Output>
+  </Run>
+  <Verify>
+    - প্রথম পাঠ `null` (সীমা নেই) আর দ্বিতীয়টি `7`
+  </Verify>
+</Lab>
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws cost title="ingest, জমা আর scan-এর দাম দিতে হয়">
+  CloudWatch Logs প্রতি গিগাবাইট ingest, প্রতি মাসে storage, আর Logs Insights query যত গিগাবাইট scan করে তার জন্য বিল করে। Production-এ বাচাল debug লগ, চিরকাল রাখা আর ঘনঘন scan করা, বিলে একটি সাধারণ চমক। Retention সেট করো, সঠিক level-এ লগ করো, আর query-র সময়সীমা সংকীর্ণ করো।
+</RealAws>
+
+<RealAws title="Metric filter ও subscription filter">
+  রিয়েল AWS-এ একটি group মেলা লাইনকে metric-এ বদলাতে (**metric filter**) বা অন্যত্র stream করতে পারে। এই সেটআপে LocalStack filter pattern নির্ভরযোগ্যভাবে প্রয়োগ করে না, তাই কোর্স লগ query করে Insights দিয়ে।
+</RealAws>
+
+<Note title="কখনো secret লগ করো না">
+  যা ছাপা হয় তা জমা হয়, খোঁজা যায়, আর প্রায়ই পুরো টিমের সঙ্গে ভাগ হয়। Identifier (অর্ডার id) লগ করো, পাসওয়ার্ড, token বা পুরো কার্ড নম্বর নয়।
+</Note>
+
+<Recap>
+
+- Log event থাকে stream-এ, stream থাকে log group-এ; retention ও query চলে group ধরে।
+- প্রতি লাইনে একটি JSON object লগকে এমন ফিল্ডে বদলায় যা query ছাঁকতে ও গুনতে পারে।
+- Retention সেট করো, কারণ ডিফল্ট হলো সবকিছু চিরকাল রাখা।
+
+</Recap>

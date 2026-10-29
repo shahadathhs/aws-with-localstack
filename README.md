@@ -147,7 +147,7 @@ endpoint `http://localhost:4566`, the region from `.env` (default `eu-west-1`) a
 
 ## Curriculum
 
-Phases 0 to 4 are written. Later phases are planned and are written as the course grows.
+Phases 0 to 5 are written. Later phases are planned and are written as the course grows.
 
 | Phase | Topic | Status |
 | --- | --- | --- |
@@ -156,8 +156,8 @@ Phases 0 to 4 are written. Later phases are planned and are written as the cours
 | 2 | **Lambda**: execution model, the event object, S3 and SQS triggers | written |
 | 3 | **API Gateway → Lambda → DynamoDB**: the serverless chain | written |
 | 4 | **SQS, SNS, EventBridge**: messaging, retries, fan-out | written |
-| 5 | **CloudWatch and Secrets Manager**: observability and config | next |
-| 6 | **Terraform**: rebuild everything as code | planned |
+| 5 | **CloudWatch and Secrets Manager**: logs, metrics, alarms, config and secrets | written |
+| 6 | **Terraform**: rebuild everything as code | next |
 | 7 | **Real AWS** (free tier): graduate from the sandbox | planned |
 
 The full plan, with the concepts and experiments for each phase, is in
@@ -183,6 +183,8 @@ The full plan, with the concepts and experiments for each phase, is in
 - **Persistence.** Resources are kept while the container lives. `make down` and `make up` loses them (persistence
   across restarts is a LocalStack Pro feature). `make clean` wipes everything.
 - **Region.** Change it in `.env` (`AWS_DEFAULT_REGION`), then run `make setup-cli` again if the profile exists.
+- **API Gateway and CloudWatch.** The course uses REST APIs, because HTTP APIs (`apigatewayv2`) are not in the
+  LocalStack license, and queries logs with Logs Insights, because CloudWatch Logs filter patterns are not applied.
 - **Presigned URLs.** LocalStack skips signature and expiry checks by default. The presigned URLs lesson explains
   how to turn them on with `S3_SKIP_SIGNATURE_VALIDATION=0`.
 

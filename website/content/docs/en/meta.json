@@ -6,6 +6,7 @@
     "iam",
     "lambda",
     "serverless",
-    "messaging"
+    "messaging",
+    "observability"
   ]
 }

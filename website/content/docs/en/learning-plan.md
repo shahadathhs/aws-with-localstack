@@ -62,11 +62,11 @@ Experiments: watch re-delivery after the visibility timeout; poison a message in
 
 ## Phase 5 — Observability + config: CloudWatch + Secrets Manager
 
-- Logs as a product: log groups vs streams, retention, Insights queries
-- Metrics and alarms; structured (JSON) logging at scale
-- Runtime config vs build-time config; secrets never baked into env vars
+20. [Logs as a product](/en/observability/01-logs/) — log groups and streams; structured logs; Logs Insights; retention
+21. [Metrics and alarms](/en/observability/02-metrics-and-alarms/) — statistics over a period; thresholds and alarm states
+22. [Config and secrets](/en/observability/03-config-and-secrets/) — secret versions; runtime reads and caching; Parameter Store
 
-Experiments: structured logging on the Phase-3 API queried via `logs filter-log-events`; store a secret and read it from Lambda at runtime.
+LocalStack does not apply CloudWatch Logs filter patterns or metric filters in this setup, so the lessons query logs with Logs Insights. Experiments: write structured logs and query them; publish a metric and fire an alarm; store a secret and read it from Lambda at runtime.
 
 ## Phase 6 — Infrastructure as Code: Terraform
 

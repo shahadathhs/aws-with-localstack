@@ -1,0 +1,137 @@
+---
+title: Logs as a product
+description: CloudWatch Logs stores what your code prints, grouped and searchable. Write structured log lines and ask questions of them with Logs Insights.
+time: 11 min
+needs:
+  - The event object
+learn:
+  - How log groups and log streams are organised
+  - Why one JSON object per line makes logs queryable
+  - How to count and filter log lines with Logs Insights
+---
+
+## Where the output goes
+
+Every `print` in a Lambda function, and every line an application sends to CloudWatch Logs, lands in a **log event**: a timestamp and a message. Events are organised in two levels:
+
+- **Log group**: the collection for one application or function, such as `/aws/lambda/show`. Retention, access and queries are set per group.
+- **Log stream**: one source inside a group, such as one function instance or one server. Events inside a stream are ordered by time.
+
+Lambda creates `/aws/lambda/<function>` for you the first time the function runs, which is why `aws logs tail` worked in the earlier lessons.
+
+Two habits make logs useful instead of merely present:
+
+- **Structured lines.** Write one JSON object per line (`{"level":"error","msg":"payment failed","orderId":2}`), not free text. The fields become something a query can filter and count.
+- **Retention.** Groups keep events forever by default, which is a bill that grows. Set a retention period suited to how long you need to look back.
+
+## Write structured logs and query them
+
+You will write events by hand, which is what an agent or a library does for your application, then ask questions with **Logs Insights**, CloudWatch's query language.
+
+<Lab title="log, query and count" time="~6 min">
+  <Predict>
+    You write two events to a log group: an `info` line and an `error` line, both JSON. You run an Insights query that keeps only the lines where `level = "error"`, and a second that counts lines grouped by `level`. What does each return?
+
+    <Answer>
+      The first returns **one** row: the error line. The second returns **two** rows, one per level, each with a count of 1. Insights reads the JSON fields (`level`) without you declaring a schema.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+aws logs create-log-group --log-group-name /app/shop
+aws logs create-log-stream --log-group-name /app/shop --log-stream-name web-1
+
+NOW=$(( $(date +%s) * 1000 ))
+cat > /tmp/events.json <<EOF
+[
+  {"timestamp": $NOW, "message": "{\"level\":\"info\",\"msg\":\"order placed\",\"orderId\":1}"},
+  {"timestamp": $((NOW + 1)), "message": "{\"level\":\"error\",\"msg\":\"payment failed\",\"orderId\":2}"}
+]
+EOF
+aws logs put-log-events --log-group-name /app/shop --log-stream-name web-1 \
+  --log-events file:///tmp/events.json
+```
+
+A log event's timestamp is in milliseconds, which is why `NOW` is multiplied by 1000. Now ask two questions. An Insights query runs asynchronously: you start it, then fetch the results.
+
+```sh
+START=$(( $(date +%s) - 300 ))
+END=$(( $(date +%s) + 60 ))
+
+QUERY_ID=$(aws logs start-query --log-group-name /app/shop --start-time $START --end-time $END \
+  --query-string 'fields @message | filter level = "error"' --query queryId --output text)
+sleep 2
+echo "errors only:"
+aws logs get-query-results --query-id "$QUERY_ID" --query 'results[*][0].value' --output text
+
+QUERY_ID=$(aws logs start-query --log-group-name /app/shop --start-time $START --end-time $END \
+  --query-string 'stats count(*) by level' --query queryId --output text)
+sleep 2
+echo "count by level:"
+aws logs get-query-results --query-id "$QUERY_ID" --query 'results[*][*].value' --output text
+```
+<Output>
+```text
+errors only:
+{"level":"error","msg":"payment failed","orderId":2}
+count by level:
+error	1
+info	1
+```
+</Output>
+  </Run>
+  <Verify>
+    - The first query prints only the `payment failed` line
+    - The second prints one row per level, each with a count of 1
+  </Verify>
+</Lab>
+
+<Lab title="keep logs only as long as you need" time="~2 min" collapsed>
+  <Predict>
+    You set a retention of 7 days on the group. How do you read the setting back, and what was it before you set it?
+
+    <Answer>
+      `describe-log-groups` shows `retentionInDays`. Before you set it, the field is absent: the group keeps events **forever**.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+aws logs describe-log-groups --log-group-name-prefix /app --query 'logGroups[0].retentionInDays'
+aws logs put-retention-policy --log-group-name /app/shop --retention-in-days 7
+aws logs describe-log-groups --log-group-name-prefix /app --query 'logGroups[0].retentionInDays'
+```
+<Output>
+```text
+null
+7
+```
+</Output>
+  </Run>
+  <Verify>
+    - The first read is `null` (no limit) and the second is `7`
+  </Verify>
+</Lab>
+
+## What changes on real AWS
+
+<RealAws cost title="You pay to ingest, store and scan">
+  CloudWatch Logs bills for each gigabyte ingested, for storage per month, and for each gigabyte a Logs Insights query scans. Verbose debug logging in production, kept forever and scanned often, is a common surprise bill. Set retention, log at the right level, and narrow the time range of a query.
+</RealAws>
+
+<RealAws title="Metric filters and subscription filters">
+  On real AWS a group can also turn matching lines into metrics (a **metric filter**) or stream them elsewhere. LocalStack does not apply filter patterns reliably in this setup, so the course queries logs with Insights instead.
+</RealAws>
+
+<Note title="Never log secrets">
+  Anything printed is stored, searchable and often shared with a whole team. Log identifiers (an order id), not passwords, tokens or full card numbers.
+</Note>
+
+<Recap>
+
+- Log events live in streams, and streams in a log group; retention and queries work per group.
+- One JSON object per line turns logs into fields a query can filter and count.
+- Set a retention period, because the default is to keep everything forever.
+
+</Recap>
