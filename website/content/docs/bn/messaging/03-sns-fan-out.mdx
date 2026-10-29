@@ -1,0 +1,143 @@
+---
+title: SNS fan-out
+description: SQS প্রতিটি message একজন consumer-কে দেয়। SNS প্রতিটি message প্রত্যেক subscriber-কে দেয়। একবার publish করে দুটি queue-তে তা পৌঁছাতে দেখো, তারপর ফিল্টার করো কে কী পাবে।
+time: ১১ মিনিট
+needs:
+  - SQS delivery ও visibility
+learn:
+  - একটি topic কীভাবে একটি publish প্রত্যেক subscriber-কে কপি করে
+  - প্রতিটি subscriber-এর পেছনে queue কেন তাদের আলাদা করে
+  - Filter policy ও raw delivery subscriber-এর পাওয়া জিনিস কীভাবে বদলায়
+---
+
+## এক থেকে অনেক
+
+Queue **point-to-point**: প্রতিটি message একজন consumer-এর কাছে যায়, আর consumer-রা কাজ ভাগ করে নেয়। SNS-এর **topic** হলো **publish/subscribe**: প্রতিটি message যায় প্রত্যেক subscriber-এর কাছে, আর প্রত্যেকে পায় নিজের কপি।
+
+অর্ডার হলে billing, shipping আর ইমেইল সার্ভিস সবারই জানা দরকার। Topic থাকলে order সার্ভিস একবার publish করে, কে শুনছে তা জানে না। চতুর্থ শ্রোতা যোগ করলে কোনো বিদ্যমান কোড বদলায় না।
+
+Topic আর প্রতিটি worker-এর মাঝে একটি SQS queue বসানোই সাধারণ গঠন:
+
+```text
+publisher --> topic --> queue --> billing worker
+                   \--> queue --> shipping worker
+```
+
+প্রতিটি queue নিজের জমে থাকা কাজ ধরে রাখে, তাই ধীর বা ক্র্যাশ করা worker অন্যদের আটকায় না, আর ব্যর্থ message সেই queue-র নিজের dead-letter queue ব্যবহার করতে পারে।
+
+## একবার publish, দুবার receive
+
+<Lab title="দুটি queue, একটি publish" time="~৫ মিনিট">
+  <Predict>
+    একটি topic-এর দুটি queue subscriber, `billing` ও `shipping`। তুমি একটি message publish করলে। মোট কয়টি message থাকে, আর প্রতিটি queue-র consumer কী দেখে?
+
+    <Answer>
+      **দুটি**, প্রতি queue-তে একটি কপি। প্রতিটি queue-তে একই message, আর প্রতিটি consumer স্বাধীনভাবে পড়ে। `billing` থেকে delete করলে `shipping`-এর কপি ছোঁয়া হয় না।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+TOPIC_ARN=$(aws sns create-topic --name orders --query TopicArn --output text)
+
+BILLING_URL=$(aws sqs create-queue --queue-name billing --query QueueUrl --output text)
+BILLING_ARN=$(aws sqs get-queue-attributes --queue-url "$BILLING_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+SHIPPING_URL=$(aws sqs create-queue --queue-name shipping --query QueueUrl --output text)
+SHIPPING_ARN=$(aws sqs get-queue-attributes --queue-url "$SHIPPING_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+
+aws sns subscribe --topic-arn "$TOPIC_ARN" --protocol sqs \
+  --notification-endpoint "$BILLING_ARN" --attributes RawMessageDelivery=true
+aws sns subscribe --topic-arn "$TOPIC_ARN" --protocol sqs \
+  --notification-endpoint "$SHIPPING_ARN" --attributes RawMessageDelivery=true
+
+aws sns publish --topic-arn "$TOPIC_ARN" --message '{"orderId":1}'
+
+echo "billing:"
+aws sqs receive-message --queue-url "$BILLING_URL" --wait-time-seconds 2 \
+  --query 'Messages[0].Body' --output text
+echo "shipping:"
+aws sqs receive-message --queue-url "$SHIPPING_URL" --wait-time-seconds 2 \
+  --query 'Messages[0].Body' --output text
+```
+
+`RawMessageDelivery=true` message-এর body হুবহু publish করা অবস্থায় দেয়। এটি না থাকলে SNS message-কে একটি envelope-এ মুড়ে দেয়, যা পরের ল্যাব দেখায়।
+<Output>
+```text
+# the subscription ARNs printed by subscribe are left out
+billing:
+{"orderId":1}
+shipping:
+{"orderId":1}
+```
+</Output>
+  </Run>
+  <Verify>
+    - একটি publish-এর জন্য দুটি queue-ই `{"orderId":1}` ফেরত দেয়
+  </Verify>
+</Lab>
+
+## উৎসেই ফিল্টার
+
+ডিফল্টে প্রতিটি subscriber প্রতিটি message পায়। Subscription-এ **filter policy** থাকলে SNS শুধু সেই message দেয় যার attribute মেলে, তাই subscriber-কে অবাঞ্ছিত জিনিস নিয়ে ফেলে দিতে হয় না।
+
+<Lab title="শুধু EU-র message" time="~৫ মিনিট" collapsed>
+  <Predict>
+    একটি নতুন subscriber-এর filter policy `{"region": ["eu"]}`, raw delivery নেই। তুমি attribute `region=us` সহ একটি আর `region=eu` সহ একটি message publish করলে। কী আসে, আর তার body দেখতে কেমন?
+
+    <Answer>
+      শুধু **eu** message। তার body খালি লেখা নয়, একটি **JSON envelope** (`Type`, `MessageId`, `TopicArn`, `Message` ও আরও), কারণ raw delivery বন্ধ। আসল payload `Message` ফিল্ডে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+EU_URL=$(aws sqs create-queue --queue-name eu-only --query QueueUrl --output text)
+EU_ARN=$(aws sqs get-queue-attributes --queue-url "$EU_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+aws sns subscribe --topic-arn "$TOPIC_ARN" --protocol sqs --notification-endpoint "$EU_ARN" \
+  --attributes '{"FilterPolicy":"{\"region\":[\"eu\"]}"}'
+
+aws sns publish --topic-arn "$TOPIC_ARN" --message us-msg \
+  --message-attributes '{"region":{"DataType":"String","StringValue":"us"}}'
+aws sns publish --topic-arn "$TOPIC_ARN" --message eu-msg \
+  --message-attributes '{"region":{"DataType":"String","StringValue":"eu"}}'
+
+aws sqs receive-message --queue-url "$EU_URL" --max-number-of-messages 10 --wait-time-seconds 2 \
+  --query 'Messages[].Body' --output text \
+  | python3 -c "import sys, json; b = json.loads(sys.stdin.read()); print(b['Type'], b['Message'])"
+```
+<Output>
+```text
+Notification eu-msg
+```
+</Output>
+  </Run>
+  <Verify>
+    - ঠিক একটি message এসেছে, আর সেটি `eu-msg`
+    - তার body একটি envelope: `Type` হলো `Notification` আর `Message`-এ তোমার publish করা লেখা
+  </Verify>
+</Lab>
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws title="Queue policy">
+  রিয়েল AWS-এ queue-তে এমন policy লাগে যা topic-কে পাঠাতে দেয় (topic-এর ARN-এর জন্য `sqs:SendMessage`), নইলে subscription থাকে কিন্তু কিছুই পৌঁছায় না। LocalStack এটি প্রয়োগ করে না, তাই ল্যাব এ ছাড়াই চলে।
+</RealAws>
+
+<RealAws cost title="প্রতি publish আর প্রতি delivery">
+  SNS publish-এর, আর কিছু protocol-এ delivery-র জন্যও চার্জ করে। অনেক subscriber-এ fan-out delivery গুণ করে, যা queue-র জন্য সস্তা কিন্তু SMS বা ইমেইলে জমে ওঠে।
+</RealAws>
+
+<Note title="Subscriber-ও duplicate দেখে">
+  SNS delivery SQS-এর মতোই at-least-once, তাই একজন subscriber একই notification দুবার পেতে পারে। পেছনের queue তা বদলায় না, তাই প্রতিটি worker-কে তবুও idempotent হতে হয়।
+</Note>
+
+<Recap>
+
+- Topic প্রতিটি publish করা message প্রত্যেক subscriber-কে কপি করে; queue সেটি একজন consumer-কে দেয়।
+- প্রতি subscriber-এ একটি queue তাদের আলাদা করে: প্রত্যেকে নিজের জমে থাকা কাজ ধরে আর নিজে retry করে।
+- Filter policy শুধু মেলা message দেয়, আর raw delivery SNS envelope সরিয়ে দেয়।
+
+</Recap>

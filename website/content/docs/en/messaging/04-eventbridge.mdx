@@ -1,0 +1,119 @@
+---
+title: EventBridge routing
+description: EventBridge routes events by what they say, not by which topic they were sent to. Write a rule as a pattern and see which of three events it lets through.
+time: 10 min
+needs:
+  - SNS fan-out
+learn:
+  - How an event bus, a rule and a target fit together
+  - How an event pattern matches on source, type and fields inside the detail
+  - When to choose EventBridge over SNS
+---
+
+## Routing on content
+
+SNS filters on attributes you attach. **EventBridge** routes on the content of the event itself. A producer puts a JSON event on an **event bus**; each **rule** on the bus holds an **event pattern**; every event that matches a rule is sent to that rule's **targets** (an SQS queue, a Lambda function, an SNS topic and many more).
+
+The pieces:
+
+- **Event bus**: the channel events are put on. Every account has a default bus, and you can create your own.
+- **Event**: JSON with a `source` (who sent it), a `detail-type` (what kind of event) and a free-form `detail` object.
+- **Rule**: a pattern plus one or more targets. A single event can match several rules and go to all their targets.
+- **Pattern**: a JSON document shaped like the event. Each field lists the values it accepts, as arrays, and a field you leave out matches anything.
+
+Patterns can reach inside `detail`, and compare numbers: `{"total": [{"numeric": [">", 100]}]}` matches only totals over 100.
+
+## A rule that picks big orders
+
+<Lab title="three events, one rule" time="~6 min">
+  <Predict>
+    A rule matches source `shop.orders`, detail-type `OrderPlaced` and a `total` over 100. You put three events on the bus: an order of 250, an order of 20, and a `UserCreated` event from `shop.users`. How many reach the rule's target queue?
+
+    <Answer>
+      **One**: the order of 250. The order of 20 fails the numeric test, and the user event has the wrong source and type. Events that match no rule are simply dropped.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+TARGET_URL=$(aws sqs create-queue --queue-name ev-target --query QueueUrl --output text)
+TARGET_ARN=$(aws sqs get-queue-attributes --queue-url "$TARGET_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+
+aws events create-event-bus --name shop
+
+aws events put-rule --name big-orders --event-bus-name shop --event-pattern '{
+  "source": ["shop.orders"],
+  "detail-type": ["OrderPlaced"],
+  "detail": { "total": [{ "numeric": [">", 100] }] }
+}'
+
+aws events put-targets --event-bus-name shop --rule big-orders \
+  --targets "Id=1,Arn=$TARGET_ARN"
+```
+
+Now put the three events on the bus. `put-events` takes a list, and `Detail` is a JSON string:
+
+```sh
+aws events put-events --entries '[
+  {"EventBusName":"shop","Source":"shop.orders","DetailType":"OrderPlaced","Detail":"{\"orderId\":1,\"total\":250}"},
+  {"EventBusName":"shop","Source":"shop.orders","DetailType":"OrderPlaced","Detail":"{\"orderId\":2,\"total\":20}"},
+  {"EventBusName":"shop","Source":"shop.users","DetailType":"UserCreated","Detail":"{}"}
+]' --query FailedEntryCount
+
+aws sqs receive-message --queue-url "$TARGET_URL" --max-number-of-messages 10 --wait-time-seconds 3 \
+  --query 'Messages[].Body' --output text \
+  | python3 -c "
+import sys, json
+for text in sys.stdin.read().split('\t'):
+    if text.strip():
+        e = json.loads(text)
+        print(e['source'], e['detail-type'], e['detail'])"
+```
+<Output>
+```text
+0
+shop.orders OrderPlaced {'orderId': 1, 'total': 250}
+```
+</Output>
+  </Run>
+  <Verify>
+    - `FailedEntryCount` is 0: all three events were accepted by the bus
+    - Exactly one event reached the queue, the order with `total` 250
+    - The delivered body is the whole event: it also carries `id`, `time`, `account` and `region`
+  </Verify>
+</Lab>
+
+## SNS or EventBridge
+
+| | SNS | EventBridge |
+| --- | --- | --- |
+| Model | publish to a topic | put an event on a bus |
+| Routing | filter policy on message attributes | pattern on the whole event, including fields in `detail` |
+| Subscribers | everyone on the topic, unless filtered | whatever each rule's pattern selects |
+| Fits | broadcasting one kind of message to many consumers | routing many kinds of events between many services |
+
+A reasonable rule of thumb: SNS when one publisher broadcasts one kind of message, EventBridge when events of many kinds flow between many services and each consumer wants a different slice.
+
+## What changes on real AWS
+
+<RealAws title="Targets need permission">
+  On real AWS a rule can only send to an SQS queue if the queue's policy allows `events.amazonaws.com` to send to it, and to a Lambda function if its resource policy allows it. Without that the rule matches and nothing arrives. LocalStack does not enforce it, so the lab works without it.
+</RealAws>
+
+<RealAws cost title="Events are billed">
+  Custom events put on a bus are charged per million, so a chatty producer shows up on the bill. Put on the bus what other services need to react to, not every internal detail.
+</RealAws>
+
+<Note title="Delivery is at-least-once here too">
+  EventBridge can deliver an event to a target more than once, and retries a failing target for a while. Your consumers stay idempotent, as everywhere in this phase.
+</Note>
+
+<Recap>
+
+- A producer puts an event on a bus, and each rule with a matching pattern sends it to its targets.
+- Patterns match on source, type and fields inside `detail`, including numeric comparisons; non-matching events are dropped.
+- Use SNS to broadcast one kind of message and EventBridge to route many kinds of events by content.
+
+</Recap>

@@ -1,0 +1,190 @@
+---
+title: এক্সিকিউশন মডেল
+description: Lambda ফাংশন হলো একটি handler, যা এমন sandbox-এ থাকে যেটি প্ল্যাটফর্ম চালু করে, বারবার ব্যবহার করে, তারপর ফেলে দেয়। একটি ডিপ্লয় করে দেখো সেটি কীভাবে warm থাকে।
+time: ১৩ মিনিট
+needs:
+  - Docker Compose দিয়ে LocalStack চালানো
+  - IAM প্রিন্সিপাল, ইউজার ও রোল
+learn:
+  - গ্লোবাল ভেরিয়েবল কেন invocation-এর মাঝে টিকে থাকে, কিন্তু instance-এর মাঝে নয়
+  - সমান্তরাল কল কীভাবে আলাদা instance হয়ে যায়
+  - Timeout কী করে, আর ব্যর্থ কলও কেন 200 ফেরত দেয়
+---
+
+## Sandbox-এর ভেতরে একটি handler
+
+তুমি একটি zip আপলোড করো, যার ভেতরে একটি **handler**, অর্থাৎ `event` আর `context` নেওয়া একটি ফাংশন। তুমি কখনো সার্ভার চালু করো না। কল এলে প্ল্যাটফর্ম তোমার কোড আছে এমন একটি sandbox খুঁজে নেয়, তার ভেতরে handler চালায়, আর পরের কলের আশায় sandbox-টি কিছুক্ষণ ধরে রাখে।
+
+- **Cold start**: কোনো sandbox ফাঁকা নেই, তাই প্ল্যাটফর্ম নতুন একটি বানায়, কোড লোড করে আর তোমার top-level কোড চালায়। এটিই ধীর পথ।
+- **Warm start**: একটি sandbox আগে থেকেই আছে এবং অলস, তাই শুধু handler চলে। গ্লোবাল ভেরিয়েবলে যা রেখেছিলে তা এখনো আছে।
+- **Concurrency**: প্রতিটি sandbox একসময়ে একটি কল সামলায়। একসঙ্গে দশটি কলের জন্য দশটি sandbox লাগে, তাই প্ল্যাটফর্ম যতগুলো দরকার ততগুলো চালু করে।
+
+ফলাফল: গ্লোবাল ভেরিয়েবল একটি cache, যা থাকতেও পারে, নাও পারে। একই sandbox ব্যবহার করা কলগুলো সেটি ভাগ করে, অন্য সব sandbox-এর কাছে সেটি অদৃশ্য। যা সঠিক হতেই হবে তা এতে রেখো না।
+
+| সেটিং | ডিফল্ট | সীমা |
+| --- | --- | --- |
+| Timeout | ৩ সেকেন্ড | ১৫ মিনিট পর্যন্ত |
+| Memory | ১২৮ MB | ১২৮ MB থেকে ১০,২৪০ MB, সঙ্গে CPU-ও বাড়ে |
+| Payload | | উত্তরের জন্য অপেক্ষা করা কলে প্রায় ৬ MB |
+
+## ডিপ্লয় ও invoke
+
+ফাংশনের একটি **execution role** লাগে: যে পরিচয়ে সে চলে, আর Lambda তোমার হয়ে সেটি assume করে ([IAM রোল](/bn/iam/01-principals-users-roles/) দেখো)। LocalStack রোলের অনুমতি প্রয়োগ করে না, কিন্তু রোলটি থাকতে হয়।
+
+<Lab title="যে counter টিকে থাকে" time="~৫ মিনিট">
+  <Predict>
+    নিচের handler প্রতি কলে গ্লোবাল `count`-এ এক যোগ করে ফেরত দেয়। এক সেকেন্ড পরপর তিনবার invoke করলে তিনটি কল কী ফেরত দেবে?
+
+    <Answer>
+      **১, ২, ৩।** প্রথম কল একটি sandbox চালু করে এবং top-level কোড চালায়, তাই `count` শুরু হয় ০ থেকে। পরের দুটি কল সেই sandbox-ই ব্যবহার করে, আর `count` চলতে থাকে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+mkdir -p /tmp/lam && cd /tmp/lam
+
+cat > handler.py <<'PY'
+import time
+
+started = time.time()
+count = 0
+
+
+def handler(event, context):
+    global count
+    count += 1
+    return {"count": count, "age": round(time.time() - started), "event": event}
+PY
+zip handler.zip handler.py
+
+aws iam create-role --role-name lambda-role --assume-role-policy-document '{
+  "Version": "2012-10-17",
+  "Statement": [{ "Effect": "Allow", "Principal": { "Service": "lambda.amazonaws.com" }, "Action": "sts:AssumeRole" }]
+}'
+
+aws lambda create-function --function-name counter --runtime python3.12 \
+  --handler handler.handler --zip-file fileb://handler.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name counter
+```
+
+`handler.handler` মানে ফাইল `handler.py`, ফাংশন `handler`। এবার তিনবার কল করো:
+
+```sh
+for i in 1 2 3; do
+  aws lambda invoke --function-name counter --payload '{"hello":"world"}' \
+    --cli-binary-format raw-in-base64-out out.json --query StatusCode --output text
+  cat out.json; echo
+  sleep 1
+done
+```
+<Output>
+```text
+# the age value depends on your timing
+200
+{"count": 1, "age": 0, "event": {"hello": "world"}}
+200
+{"count": 2, "age": 1, "event": {"hello": "world"}}
+200
+{"count": 3, "age": 3, "event": {"hello": "world"}}
+```
+</Output>
+  </Run>
+  <Verify>
+    - `count` চলে ১, ২, ৩: গ্লোবাল ভেরিয়েবল টিকে ছিল, কারণ একই sandbox তিনটি কলই সামলেছে
+    - `age` বাড়ে: top-level কোড একবারই চলেছে, sandbox চালু হওয়ার সময়
+    - `event` হুবহু সেই JSON, যা তুমি `--payload`-এ দিয়েছিলে
+  </Verify>
+</Lab>
+
+<Lab title="সমান্তরাল কল, নতুন instance" time="~৩ মিনিট" collapsed>
+  <Predict>
+    তিনটি invocation একই মুহূর্তে চালালে, তারপর ফাংশনের memory সেটিং বদলে আরেকবার invoke করলে `count`-এর কী হবে?
+
+    <Answer>
+      অলস থাকা sandbox তিনটির একটি কল নিয়ে গুনে চলে। বাকি দুটি এমন সময় আসে যখন সেটি ব্যস্ত, তাই প্রতিটি **নতুন** sandbox পায়, যা ১ থেকে শুরু। কনফিগারেশন বদলালে পুরোনো sandbox-গুলো বাতিল হয়, তাই পরের কলে আবার ১।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+for i in 1 2 3; do
+  ( aws lambda invoke --function-name counter --payload '{}' \
+      --cli-binary-format raw-in-base64-out par$i.json >/dev/null; cat par$i.json; echo ) &
+done; wait
+
+aws lambda update-function-configuration --function-name counter --memory-size 256
+aws lambda wait function-updated-v2 --function-name counter
+aws lambda invoke --function-name counter --payload '{}' \
+  --cli-binary-format raw-in-base64-out out.json >/dev/null; cat out.json
+```
+  </Run>
+  <Verify>
+    - তিনটি সমান্তরাল উত্তরের একটি পুরোনো count চালিয়ে যায়, বাকিগুলো `"count": 1` দেখায় (ছাপার ক্রম বদলায়)
+    - memory বদলানোর পর count আবার ১ থেকে শুরু
+  </Verify>
+</Lab>
+
+<Lab title="Timeout" time="~৩ মিনিট" collapsed>
+  <Predict>
+    একটি handler ৫ সেকেন্ড ঘুমায়, আর ফাংশনের timeout ডিফল্টই আছে। `invoke` HTTP status code কী দেখাবে?
+
+    <Answer>
+      **200**, যদিও কলটি ব্যর্থ হয়েছে। Status code বলে invoke অনুরোধটির কথা। ব্যর্থতা থাকে `FunctionError` ফিল্ডে আর body-তে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+cat > slow.py <<'PY'
+import time
+
+
+def handler(event, context):
+    time.sleep(5)
+    return "done"
+PY
+zip slow.zip slow.py
+aws lambda create-function --function-name slow --runtime python3.12 \
+  --handler slow.handler --zip-file fileb://slow.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name slow
+
+aws lambda invoke --function-name slow --cli-binary-format raw-in-base64-out out.json \
+  --query '[StatusCode,FunctionError]' --output text
+cat out.json
+```
+<Output>
+```text
+# the request id in your output differs
+200	Unhandled
+{"errorMessage":"RequestId: 4cd5d0fc-5108-4cc6-93c3-9a58e0d6de84 Error: Task timed out after 3.00 seconds","errorType":"Sandbox.Timedout"}
+```
+</Output>
+  </Run>
+  <Verify>
+    - Status code ২০০, আর `FunctionError` হলো `Unhandled`
+    - Body-তে লেখা `Task timed out after 3.00 seconds`
+  </Verify>
+</Lab>
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws cost title="সময় আর memory-র দাম দিতে হয়">
+  বিল হয় অনুরোধের সংখ্যা আর duration গুণ কনফিগার করা memory ধরে। বেশি memory মানে বেশি CPU-ও, তাই বড় সেটিংয়ে কাজ আগে শেষ হয়ে একই বা কম খরচ পড়তে পারে। যে ফাংশন ঘুমায়, ঘুমানোর সময়ের জন্যও তার দাম দিতে হয়।
+</RealAws>
+
+<Note title="Cold start হুবহু সিমুলেট হয় না">
+  LocalStack প্রতিটি ফাংশন তোমার মেশিনে একটি container-এ চালায়, তাই প্রথম কল ধীর হয়, কিন্তু সেই সময় থেকে আসল cold start সম্পর্কে কিছু জানা যায় না। সেটি AWS-এ মাপো।
+</Note>
+
+<Note title="বাস্তবে গ্লোবাল state">
+  যা বানাতে খরচ বেশি অথচ আবার ব্যবহার নিরাপদ, যেমন SDK client বা ডেটাবেস কানেকশন, তার জন্য গ্লোবাল ব্যবহার করো। counter বা অন্য instance-এর যা দেখা দরকার, তার জন্য নয়।
+</Note>
+
+<Recap>
+
+- ফাংশন হলো sandbox-এ থাকা handler, যা warm থাকা পর্যন্ত প্ল্যাটফর্ম বারবার ব্যবহার করে; গ্লোবাল ভেরিয়েবল সেই sandbox-এর সঙ্গেই বাঁচে-মরে।
+- Concurrency মানে বেশি sandbox: সমান্তরাল কল গ্লোবাল ভাগ করে না।
+- Timeout কলটিকে ব্যর্থ করে, অনুরোধটিকে নয়, তাই শুধু status code নয়, `FunctionError`-ও দেখো।
+
+</Recap>

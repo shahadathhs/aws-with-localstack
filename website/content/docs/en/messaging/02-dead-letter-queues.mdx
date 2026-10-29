@@ -1,0 +1,160 @@
+---
+title: Dead-letter queues
+description: A message that always fails would loop forever. A dead-letter queue is where SQS moves it after a set number of attempts, so you can look at it instead of losing it.
+time: 11 min
+needs:
+  - SQS delivery and visibility
+  - SQS triggers
+learn:
+  - How maxReceiveCount decides when a message is moved aside
+  - What lands in the dead-letter queue and what does not
+  - How a Lambda consumer ends the endless retry loop
+---
+
+## Parking the poison
+
+In the [SQS triggers lesson](/en/lambda/03-sqs-triggers/) a message that always failed came back forever. The fix is a **dead-letter queue** (DLQ): an ordinary queue that you name in the source queue's **redrive policy**. The policy has two parts:
+
+- `deadLetterTargetArn`: where to move a message.
+- `maxReceiveCount`: how many times a message may be received before it is moved.
+
+Each receive that is not followed by a delete counts. When a message is about to be received for the `maxReceiveCount + 1`-th time, SQS moves it to the DLQ instead. Nothing is lost, and the main queue is clear again. A person or a repair job then reads the DLQ, finds out why it failed, and decides what to do.
+
+## A poison message, parked
+
+<Lab title="receive until it moves" time="~5 min">
+  <Predict>
+    The source queue has `maxReceiveCount` 2 and a 2-second visibility timeout. A message is put in it, and you receive repeatedly without ever deleting. On which receives do you get it, and where is it afterwards?
+
+    <Answer>
+      On the **first two** receives. The third receive finds the queue empty, because the message has been moved. It is now in the dead-letter queue, with its body unchanged.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+DLQ_URL=$(aws sqs create-queue --queue-name jobs-dlq --query QueueUrl --output text)
+DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$DLQ_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+
+JOBS_URL=$(aws sqs create-queue --queue-name jobs --attributes '{
+  "VisibilityTimeout": "2",
+  "RedrivePolicy": "{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"2\"}"
+}' --query QueueUrl --output text)
+
+aws sqs send-message --queue-url "$JOBS_URL" --message-body poison
+```
+
+The redrive policy is a JSON string inside a JSON value, which is why the quotes are escaped. Receive three times, never deleting:
+
+```sh
+for attempt in 1 2 3; do
+  echo "receive $attempt:"
+  aws sqs receive-message --queue-url "$JOBS_URL" --wait-time-seconds 3 \
+    --query 'Messages[0].Body' --output text
+  sleep 3
+done
+
+echo "in the dead-letter queue:"
+aws sqs receive-message --queue-url "$DLQ_URL" --wait-time-seconds 2 \
+  --query 'Messages[0].Body' --output text
+```
+<Output>
+```text
+receive 1:
+poison
+receive 2:
+poison
+receive 3:
+None
+in the dead-letter queue:
+poison
+```
+</Output>
+  </Run>
+  <Verify>
+    - Receives 1 and 2 return `poison`; receive 3 returns `None`
+    - The dead-letter queue now holds `poison`
+  </Verify>
+</Lab>
+
+## Closing the Lambda loop
+
+<Lab title="a failing Lambda consumer, ended by the DLQ" time="~6 min" collapsed>
+  <Predict>
+    You reuse the `batcher` function from the SQS triggers lesson, which reports `bad` as failed every time. The source queue has a DLQ with `maxReceiveCount` 3. You send `ok1`, `bad` and `ok2` together. How many times is `bad` delivered, and where does it end up?
+
+    <Answer>
+      **Three times** (once in the batch of three, then twice alone), and then it is in the DLQ. `ok1` and `ok2` are processed once and deleted. The loop that never stopped in the last lesson now stops by itself.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+DLQ_ARN=$(aws sqs get-queue-attributes --queue-url "$DLQ_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+aws sqs purge-queue --queue-url "$DLQ_URL"
+
+WORK_URL=$(aws sqs create-queue --queue-name work2 --attributes '{
+  "VisibilityTimeout": "3",
+  "RedrivePolicy": "{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"3\"}"
+}' --query QueueUrl --output text)
+WORK_ARN=$(aws sqs get-queue-attributes --queue-url "$WORK_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+
+aws lambda create-event-source-mapping --function-name batcher \
+  --event-source-arn "$WORK_ARN" --batch-size 10 \
+  --function-response-types ReportBatchItemFailures
+sleep 2
+
+aws sqs send-message-batch --queue-url "$WORK_URL" --entries '[
+  {"Id":"1","MessageBody":"ok1"},
+  {"Id":"2","MessageBody":"bad"},
+  {"Id":"3","MessageBody":"ok2"}
+]'
+sleep 25
+
+aws logs tail /aws/lambda/batcher --since 1m --format short | grep "batch of"
+aws sqs receive-message --queue-url "$DLQ_URL" --wait-time-seconds 2 \
+  --query 'Messages[].Body' --output text
+```
+<Output>
+```text
+2026-10-29T05:28:17 batch of 3: ok1, bad, ok2
+2026-10-29T05:28:20 batch of 1: bad
+2026-10-29T05:28:24 batch of 1: bad
+bad
+```
+</Output>
+  </Run>
+  <Verify>
+    - `bad` appears in three log lines, the last two on its own, and then no more
+    - The dead-letter queue holds `bad`; `ok1` and `ok2` are not in it
+  </Verify>
+</Lab>
+
+<Destructive>
+  This mapping keeps running. Remove it when you are done: `aws lambda list-event-source-mappings --function-name batcher` shows its UUID, and `aws lambda delete-event-source-mapping --uuid <UUID>` deletes it.
+</Destructive>
+
+## What changes on real AWS
+
+<RealAws title="Alarm on the DLQ">
+  A dead-letter queue nobody watches is a silent data loss. On real AWS, put an alarm on its `ApproximateNumberOfMessagesVisible` metric so a message arriving there pages someone. Set the DLQ's retention longer than the source queue's, because the message's original age keeps counting.
+</RealAws>
+
+<RealAws title="Redrive">
+  Once you have fixed the bug, real AWS can move messages from the DLQ back to the source queue in one operation, so you do not have to resend them by hand.
+</RealAws>
+
+<Note title="Pick maxReceiveCount deliberately">
+  Too low and a brief outage in a dependency sends healthy messages to the DLQ; too high and a poison message wastes many retries first. Three to five is a common start. A FIFO source queue needs a FIFO dead-letter queue.
+</Note>
+
+<Recap>
+
+- A redrive policy names a dead-letter queue and a `maxReceiveCount`; after that many receives without a delete, SQS moves the message.
+- The DLQ keeps the failing message intact so you can inspect it, and the main queue keeps flowing.
+- Together with `batchItemFailures`, it turns an endless Lambda retry loop into a bounded one.
+
+</Recap>

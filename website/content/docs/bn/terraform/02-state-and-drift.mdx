@@ -1,0 +1,169 @@
+---
+title: State ও drift
+description: Terraform তার state ফাইলে ভরসা করে আর প্রতি plan-এ সেটি বাস্তবতার সঙ্গে মেলায়। তার পিঠের পেছনে কিছু বদলাও আর দেখো সে টের পায়, তারপর সবকিছু destroy করে ফাইল থেকে আবার বানাও।
+time: ১২ মিনিট
+needs:
+  - Desired state
+learn:
+  - State ফাইলে কী থাকে আর কেন সেটি হাতে সম্পাদনা করো না
+  - Plan কীভাবে drift ধরে, মানে Terraform-এর বাইরে করা বদল
+  - Destroy কী করে, আর ফাইল থেকে rebuild কেন কাজ করে
+---
+
+## State ফাইল
+
+`apply`-এর পর Terraform `labs/terraform/`-এ একটি `terraform.tfstate` ফাইল লিখেছে। এটি একটি JSON নথি: তোমার কনফিগারেশনের প্রতিটি resource-এর জন্য আসল object-এর id আর Terraform শেষবার যে attribute দেখেছে। এভাবেই সে জানে `aws_s3_bucket.notes` হলো `tf-notes` নামের bucket, অন্য কোনোটি নয়।
+
+`terraform state list` সে যা ট্র্যাক করে তা ছাপে।
+
+কিছু তুলনা করার আগে প্রতিটি `plan` দুটি কাজ করে। প্রথমে **refresh**: state-এর প্রতিটি জিনিসের বর্তমান attribute AWS-কে জিজ্ঞেস করে। তারপর তিনটি জিনিস তুলনা করে: তোমার ফাইল (যা চাও), state (সে শেষবার যা জানত) আর refresh করা বাস্তবতা (এখন যা আছে)।
+
+State ফাইল তোমার সম্পাদনা করার নথি নয়। তাতে সংবেদনশীল মান সাদা লেখায় থাকতে পারে, তাই এটিকে secret-এর মতো দেখো, আর commit কোরো না। পরের পাঠ এটি আরও নিরাপদ জায়গায় সরায়।
+
+## Terraform-এর পিঠের পেছনে বদল
+
+**Drift** হলো বাস্তবতা আর ফাইল না মেলা, কারণ কেউ হাতে কিছু বদলেছে: console-এ, CLI দিয়ে, অন্য টুল থেকে। অবকাঠামো আর তার বর্ণনা আলাদা হয়ে যাওয়ার প্রধান কারণ এটিই।
+
+<Lab title="হাতে একটি queue বদলাও" time="~৬ মিনিট">
+  <Predict>
+    State বলছে queue-র visibility timeout ৩০, ফাইলের সঙ্গে মিলে। তুমি AWS CLI দিয়ে সেটি ৯০ করলে। `plan` কী জানায়, আর `apply` তখন কী করে?
+
+    <Answer>
+      `plan` refresh করে, ৯০ দেখে, আর জানায় **১টি বদল**: `visibility_timeout_seconds = 90 -> 30`। ফাইলই জেতে। `apply` সেটি আবার ৩০ করে দেয় আর হাতের সম্পাদনা মুছে যায়। ফাইলে কিছু বদলায়নি; বদলেছিল বাস্তবতা।
+    </Answer>
+  </Predict>
+  <Run>
+এই ল্যাব আগের পাঠ থেকে চলে, যেখানে `tf-notes`, `tf-jobs` ও `tf-tasks` apply করা। State কী ট্র্যাক করে তা তালিকাভুক্ত করো, তারপর Terraform-এর পিঠের পেছনে queue বদলাও:
+
+```sh
+make tf CMD="state list"
+
+export AWS_PROFILE=localstack
+QUEUE_URL=$(aws sqs get-queue-url --queue-name tf-jobs --query QueueUrl --output text)
+aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes VisibilityTimeout=90
+```
+<Output>
+```text
+aws_dynamodb_table.tasks
+aws_s3_bucket.notes
+aws_sqs_queue.jobs
+```
+</Output>
+
+Plan, তারপর apply:
+
+```sh
+make tf CMD="plan -no-color"
+make tf CMD="apply -auto-approve -no-color"
+aws sqs get-queue-attributes --queue-url "$QUEUE_URL" \
+  --attribute-names VisibilityTimeout --query Attributes.VisibilityTimeout --output text
+```
+<Output>
+```text
+# trimmed
+~ visibility_timeout_seconds        = 90 -> 30
+Plan: 0 to add, 1 to change, 0 to destroy.
+Apply complete! Resources: 0 added, 1 changed, 0 destroyed.
+30
+```
+</Output>
+  </Run>
+  <Verify>
+    - `state list` তিনটি resource-ই দেখায়
+    - Plan যে attribute drift করেছে তার নাম বলে, `90 -> 30`
+    - `apply`-এর পর queue ফাইলের মানে ফিরে আসে
+  </Verify>
+</Lab>
+
+<Lab title="হাতে কিছু মুছে ফেলো" time="~৪ মিনিট">
+  <Predict>
+    তুমি AWS CLI দিয়ে bucket সরালে। State এখনো সেটি তালিকাভুক্ত করে। `plan` কী বলে?
+
+    <Answer>
+      **১টি যোগ**: `aws_s3_bucket.notes will be created`। Refresh-এর পর Terraform bucket নেই দেখে, তার ছবি থেকে সরিয়ে আবার বানানোর পরিকল্পনা করে। `apply` সেটি আবার বানায়।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+aws s3 rb s3://tf-notes
+make tf CMD="plan -no-color"
+make tf CMD="apply -auto-approve -no-color"
+aws s3 ls | grep tf-notes
+```
+<Output>
+```text
+# trimmed
+remove_bucket: tf-notes
+# aws_s3_bucket.notes will be created
+Plan: 1 to add, 0 to change, 0 to destroy.
+Apply complete! Resources: 1 added, 0 changed, 0 destroyed.
+2026-10-29 12:00:01 tf-notes
+```
+</Output>
+  </Run>
+  <Verify>
+    - Plan ঠিক সেই একটি হারানো bucket বানানোর প্রস্তাব দেয়
+    - `apply`-এর পর `tf-notes` ফিরে আসে
+  </Verify>
+</Lab>
+
+## ভাঙো, আবার গড়ো
+
+`destroy` হলো ফাঁকা কনফিগারেশনের জন্য `apply`: নির্ভরতার ক্রম মেনে state-এর সবকিছু মুছে দেয়। ফাইলগুলো সেটআপ পুরোপুরি বর্ণনা করে বলে `apply` তারপর সবটাই আবার বানাতে পারে।
+
+<Lab title="destroy, তারপর ফাইল থেকে rebuild" time="~৫ মিনিট" collapsed>
+  <Predict>
+    তুমি `destroy` চালালে। AWS CLI পরে কী দেখায়, আর state-এ কী থাকে? তারপর আবার `apply` চালালে। কী পাও?
+
+    <Answer>
+      CLI কোনো `tf-` bucket বা `tf-tasks` table দেখায় না, আর state কোনো resource তালিকাভুক্ত করে না। `apply` তখন জানায় **৩টি যোগ**: একই তিনটি resource আবার, শুধু ফাইল থেকে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+make tf CMD="destroy -auto-approve -no-color"
+aws s3 ls | grep -c tf-
+make tf CMD="state list"
+
+make tf CMD="apply -auto-approve -no-color"
+```
+<Output>
+```text
+# trimmed; "0" is the number of tf- buckets left
+Destroy complete! Resources: 3 destroyed.
+0
+Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
+```
+</Output>
+  </Run>
+  <Verify>
+    - `destroy`-এর পর count ০ আর `state list` কিছুই ছাপে না
+    - `apply`-এর পর তিনটি resource-ই আবার আছে
+  </Verify>
+</Lab>
+
+<Destructive>
+  `destroy` আসল resource আর তার ভেতরের ডেটা মুছে দেয়। আসল AWS-এ সে যে plan ছাপে তা সবসময় আগে পড়ো। কনফিগারেশনে `lifecycle { prevent_destroy = true }` দিয়েও resource সুরক্ষিত করা যায়।
+</Destructive>
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws title="Drift সাধারণ, আর কখনো উদ্দিষ্ট">
+  দলে কেউ না কেউ ঘটনার সময় console-এ কিছু বদলাবে। নির্দিষ্ট বিরতিতে `plan` চালাও আর অপ্রত্যাশিত বদলকে সংকেত ধরো। কিছু attribute ইচ্ছে করেই অন্য কোথাও পরিচালিত হয় (যেমন autoscaler সংখ্যা বদলায়), আর Terraform-কে `ignore_changes` দিয়ে সেগুলো উপেক্ষা করতে বলা যায়।
+</RealAws>
+
+<RealAws title="State-এ secret থাকে">
+  Resource-এর attribute, তৈরি করা পাসওয়ার্ড ও key-সহ, state-এ সাদা লেখায় লেখা হয়। State ফাইলে অ্যাক্সেস নিয়ন্ত্রিত থাকতে হয় আর কখনো git-এ commit করা চলে না।
+</RealAws>
+
+<Note title="State কখনো হাতে সম্পাদনা কোরো না">
+  State আর বাস্তবতা এমনভাবে না মিললে যা `plan` ঠিক করতে পারে না, JSON সম্পাদনার বদলে `terraform state` ও `terraform import` কমান্ড ব্যবহার করো, যা ফাইলটি সামঞ্জস্যপূর্ণ রাখে।
+</Note>
+
+<Recap>
+
+- State তোমার ফাইলের প্রতিটি resource-কে একটি আসল object-এর সঙ্গে জুড়ে রাখে, আর প্রতিটি plan সেটি বাস্তবতার সঙ্গে refresh করে।
+- Drift, মানে Terraform-এর বাইরে করা বদল, plan-এ পার্থক্য হয়ে দেখা দেয়, আর `apply` বাস্তবতাকে ফাইলে ফিরিয়ে আনে।
+- `destroy` state-এর সবকিছু সরায়, আর `apply` শুধু ফাইল থেকে সেটি আবার বানাতে পারে।
+
+</Recap>

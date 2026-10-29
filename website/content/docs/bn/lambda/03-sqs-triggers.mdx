@@ -1,0 +1,127 @@
+---
+title: SQS trigger
+description: Lambda তোমার হয়ে একটি queue poll করতে পারে। Batch size ঠিক করে একটি কলে কয়টি message যাবে, আর ব্যর্থ message নিজে থেকেই ফিরে আসে।
+time: ১২ মিনিট
+needs:
+  - Event object
+learn:
+  - Event source mapping কীভাবে queue-কে ফাংশন-কলে বদলায়
+  - Batch size আর batching window কী বদলায়
+  - আংশিক ব্যর্থতা জানালে কেন শুধু খারাপ message-টিই retry হয়
+---
+
+## প্ল্যাটফর্ম তোমার হয়ে poll করে
+
+Queue ফাংশন ডাকতে পারে না। Lambda এই ফাঁক পূরণ করে **event source mapping** দিয়ে: প্ল্যাটফর্মের চালানো একটি poller, যে queue থেকে message পড়ে আর একটি batch নিয়ে তোমার ফাংশন invoke করে। তোমাকে polling-এর কোড লিখতে হয় না।
+
+তিনটি সেটিং একে গড়ে:
+
+- **Batch size**: একটি কলে সর্বোচ্চ কয়টি message (standard queue-তে ১০ পর্যন্ত, যদি না batching window-ও ব্যবহার করো)।
+- **Batching window**: batch ভরার জন্য poller কত সময় অপেক্ষা করে, তারপর তবু কল করে।
+- **Visibility timeout** (queue-র সেটিং): message ফাংশনকে দেওয়ার পর লুকিয়ে যায়। কল সফল না হলে এই সময় পরে সেটি আবার দেখা যায় এবং আবার পাঠানো হয়।
+
+ফাংশন স্বাভাবিকভাবে ফিরলে Lambda পুরো batch মুছে দেয়। ব্যর্থ হলে পুরো batch আবার দেখা যায়, **যেগুলো ঠিকঠাক ছিল সেগুলোসহ**। এ কারণেই handler বরং জানাতে পারে কোন message ব্যর্থ হয়েছে।
+
+## Batch ও একটি poison message
+
+<Lab title="৫টির batch, তারপর একটি খারাপ message" time="~৭ মিনিট">
+  <Predict>
+    পাঁচটি message অপেক্ষায় আছে, আর batch size ১০। কয়টি invocation আশা করো? পরে তুমি একসঙ্গে `ok1`, `bad` ও `ok2` পাঠালে, আর handler শুধু `bad`-কে ব্যর্থ বলে জানায়। কোন message-গুলো আবার আসবে?
+
+    <Answer>
+      **একটি invocation, পাঁচটিই নিয়ে।** দ্বিতীয় ক্ষেত্রে শুধু `bad`, এবং প্রতি visibility timeout-এর পর আবার, কারণ সে প্রতিবারই ব্যর্থ হয়। `ok1` ও `ok2` সফল বলে জানানো হয়েছে, তাই মুছে যায়।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+mkdir -p /tmp/lam && cd /tmp/lam
+
+cat > batch.py <<'PY'
+def handler(event, context):
+    records = event["Records"]
+    print(f"batch of {len(records)}: " + ", ".join(r["body"] for r in records))
+    failed = [{"itemIdentifier": r["messageId"]} for r in records if r["body"] == "bad"]
+    return {"batchItemFailures": failed}
+PY
+zip batch.zip batch.py
+aws lambda create-function --function-name batcher --runtime python3.12 \
+  --handler batch.handler --zip-file fileb://batch.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name batcher
+```
+
+Handler ব্যর্থ message-গুলোর id ফেরত দেয়। ছোট visibility timeout-এর একটি queue বানাও, আর ফাংশন জোড়ার **আগে** তাতে পাঁচটি message রাখো:
+
+```sh
+QUEUE_URL=$(aws sqs create-queue --queue-name work \
+  --attributes VisibilityTimeout=5 --query QueueUrl --output text)
+QUEUE_ARN=$(aws sqs get-queue-attributes --queue-url "$QUEUE_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+
+for m in a b c d e; do
+  aws sqs send-message --queue-url "$QUEUE_URL" --message-body $m >/dev/null
+done
+
+aws lambda create-event-source-mapping --function-name batcher \
+  --event-source-arn "$QUEUE_ARN" --batch-size 10 \
+  --maximum-batching-window-in-seconds 1 \
+  --function-response-types ReportBatchItemFailures
+
+sleep 8
+aws logs tail /aws/lambda/batcher --since 5m --format short | grep "batch of"
+```
+<Output>
+```text
+2026-10-29T05:09:01 batch of 5: a, b, c, d, e
+```
+</Output>
+
+এবার একটি অনুরোধে তিনটি message পাঠাও, একটি বিষাক্ত, আর কিছুক্ষণ লগ দেখো:
+
+```sh
+aws sqs send-message-batch --queue-url "$QUEUE_URL" --entries '[
+  {"Id":"1","MessageBody":"ok1"},
+  {"Id":"2","MessageBody":"bad"},
+  {"Id":"3","MessageBody":"ok2"}
+]'
+sleep 20
+aws logs tail /aws/lambda/batcher --since 5m --format short | grep "batch of" | grep -v "batch of 5"
+```
+  </Run>
+  <Verify>
+    - প্রথম লগ লাইনটি একটি `batch of 5`
+    - `ok1`, `bad` ও `ok2` একসঙ্গে `batch of 3` হয়ে আসে; এরপর `ok1` ও `ok2` আর কখনো আসে না
+    - `bad` কয়েক সেকেন্ড পরপর ফিরে আসে, প্রায় প্রতি visibility timeout-এ একবার, আর থামে না
+  </Verify>
+</Lab>
+
+<Destructive>
+  যে message সবসময় ব্যর্থ হয় সে নিজে থেকে queue ছাড়ে না, আর রিয়েল AWS-এ প্রতিটি retry একটি দামি invocation। এখনই চক্রটি থামাও: `aws lambda delete-event-source-mapping --uuid <UUID>` (UUID পাবে `aws lambda list-event-source-mappings --function-name batcher` দিয়ে), তারপর `aws sqs purge-queue --queue-url "$QUEUE_URL"`।
+</Destructive>
+
+## অন্তহীন retry
+
+এইমাত্র যে চক্র দেখলে, আসল সিস্টেম তা এড়ায় **dead-letter queue** দিয়ে: একটি message নির্দিষ্টবার ব্যর্থ হলে queue সেটি সরিয়ে আলাদা জায়গায় রাখে, যেখানে মানুষ তা দেখতে পারে। Phase 4-এর queue পাঠ সেটি বানায়। আপাতত নিয়মটি মনে রাখো: *handler-কে একই message-এ দুবার চালানো নিরাপদ হতে হবে*, কারণ প্রতিটি retry ও duplicate delivery তাকে আবার চালায়।
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws cost title="Poller-এর অনুরোধের খরচ আছে">
+  Poller তোমার হয়ে অবিরাম SQS ডাকে, আর প্রতিটি ফাঁকা receive-ও বিলযোগ্য অনুরোধ। Queue-র জমে থাকা কাজ অনুযায়ী Lambda poller-এর সংখ্যাও বাড়ায়, তাই গভীর queue একসঙ্গে অনেক ফাংশন instance চালিয়ে তাদের লেখার জায়গাকে ঠেসে ধরতে পারে। Mapping-এ maximum concurrency সেট করে সেটির ওপর ছাদ বসাও।
+</RealAws>
+
+<Note title="Batch size আর visibility timeout">
+  Visibility timeout ফাংশনের timeout-এর চেয়ে বড় হতে হবে। নইলে প্রথম কল কাজ করার মধ্যেই message ফিরে আসে, আর একই message-এর জন্য দ্বিতীয় কল শুরু হয়।
+</Note>
+
+<Note title="LocalStack-এ">
+  এক এক করে পাঠানো message সময়ের ওপর নির্ভর করে একটি করে message-এর আলাদা কল হয়ে আসতে পারে। একটি `send-message-batch` অনুরোধে, বা mapping থাকার আগে পাঠালেই বড় batch পুনরাবৃত্তিযোগ্য হয়।
+</Note>
+
+<Recap>
+
+- Event source mapping তোমার হয়ে queue poll করে এবং message-এর একটি batch দিয়ে ফাংশন ডাকে।
+- শুধু ব্যর্থ message retry করতে `batchItemFailures` ফেরত দাও; নইলে একটি ব্যর্থতায় পুরো batch আবার চলে।
+- যে message সবসময় ব্যর্থ হয় সে অনন্তকাল ঘোরে, তাই আসল queue-তে dead-letter queue থাকে আর handler হয় idempotent।
+
+</Recap>

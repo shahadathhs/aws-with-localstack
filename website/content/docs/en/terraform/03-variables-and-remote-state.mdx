@@ -1,0 +1,223 @@
+---
+title: Variables and remote state
+description: Make a configuration reusable with variables and outputs, see why renaming a resource means replacing it, and move the state file into a bucket where a team can share it.
+time: 13 min
+needs:
+  - State and drift
+learn:
+  - How variables and outputs make a configuration reusable
+  - Which changes update a resource and which replace it
+  - Why state lives in a remote backend, and how to move it
+---
+
+## Variables and outputs
+
+A configuration with hard-coded names can be used once. **Variables** are its inputs, and **outputs** are what it reports back.
+
+- `variable "prefix" { ... }` declares an input, with a type and an optional default. Reference it as `var.prefix`, and put it in a string as `"${var.prefix}-notes"`.
+- You supply a value with `-var prefix=dev`, a `terraform.tfvars` file, or an environment variable named `TF_VAR_prefix`.
+- `output "bucket_arn" { value = ... }` prints a value after `apply` and keeps it for `terraform output`. Other tools, and other Terraform configurations, read outputs.
+
+## Rename is replace
+
+Some arguments cannot be changed on a live resource. A bucket's name is one of them. Change a name and Terraform plans to **destroy the old resource and create a new one**. The plan marks it `forces replacement`. Reading the plan for that phrase is how you avoid deleting a database by renaming it.
+
+<Lab title="a prefix that renames everything" time="~6 min">
+  <Predict>
+    You change the configuration so every name starts with `${var.prefix}`, with the default `tf` (the names stay the same). Then you plan with `-var prefix=dev`. What does the first plan say, and what does the second?
+
+    <Answer>
+      The first, with the default `tf`: **no resource changes**, only `Changes to Outputs` for the two outputs you just added. The names are identical, so refactoring into a variable changes nothing real. The second, `dev`: **3 to add, 0 to change, 3 to destroy**, each marked `forces replacement`, because all three names change.
+    </Answer>
+  </Predict>
+  <Run>
+This lab continues with `tf-notes`, `tf-jobs` and `tf-tasks` applied. Rewrite the file so names come from a variable, and add two outputs:
+
+```sh
+cat > labs/terraform/main.tf <<'EOF'
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region                      = "eu-west-1"
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = true
+  s3_use_path_style           = true
+
+  endpoints {
+    s3       = "http://localstack:4566"
+    sqs      = "http://localstack:4566"
+    dynamodb = "http://localstack:4566"
+  }
+}
+
+variable "prefix" {
+  type        = string
+  description = "Prepended to every resource name"
+  default     = "tf"
+}
+
+resource "aws_s3_bucket" "notes" {
+  bucket = "${var.prefix}-notes"
+}
+
+resource "aws_sqs_queue" "jobs" {
+  name                       = "${var.prefix}-jobs"
+  visibility_timeout_seconds = 30
+}
+
+resource "aws_dynamodb_table" "tasks" {
+  name         = "${var.prefix}-tasks"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+}
+
+output "bucket_arn" {
+  value = aws_s3_bucket.notes.arn
+}
+
+output "queue_url" {
+  value = aws_sqs_queue.jobs.url
+}
+EOF
+```
+
+Plan with the default, then with a different prefix. Neither plan is applied, so nothing changes yet:
+
+```sh
+echo "default prefix:"
+make tf CMD="plan -no-color" | grep -E "Changes to Outputs|No changes|Plan:|will be"
+echo "prefix dev:"
+make tf CMD="plan -no-color -var prefix=dev" | grep -E "No changes|Plan:|forces replacement"
+```
+<Output>
+```text
+default prefix:
+Changes to Outputs:
+prefix dev:
+      ~ name                        = "tf-tasks" -> "dev-tasks" # forces replacement
+      ~ bucket                      = "tf-notes" -> "dev-notes" # forces replacement
+      ~ name                              = "tf-jobs" -> "dev-jobs" # forces replacement
+Plan: 3 to add, 0 to change, 3 to destroy.
+```
+</Output>
+
+Apply once with the default so the outputs are recorded, and read them back:
+
+```sh
+make tf CMD="apply -auto-approve -no-color"
+make tf CMD="output -no-color bucket_arn"
+```
+<Output>
+```text
+# the apply recorded two new outputs and changed nothing else
+Apply complete! Resources: 0 added, 0 changed, 0 destroyed.
+"arn:aws:s3:::tf-notes"
+```
+</Output>
+  </Run>
+  <Verify>
+    - The default plan changes no resource (only the outputs are new)
+    - The `dev` plan marks all three names `forces replacement` and ends `3 to add, 0 to change, 3 to destroy`
+    - `output bucket_arn` prints the bucket's ARN
+  </Verify>
+</Lab>
+
+## State belongs in a shared place
+
+So far the state sits in a file on your machine. Two people running Terraform from two laptops each have their own copy, and the second `apply` does not know what the first one did. A **remote backend** keeps one copy in shared storage. The `s3` backend stores it in a bucket.
+
+<Lab title="move the state into S3" time="~5 min">
+  <Predict>
+    You create a bucket `tf-state`, add a `backend "s3"` block, and run `init -migrate-state`. Where is the state afterwards, and does `plan` still report no changes?
+
+    <Answer>
+      The state is the object `notes/terraform.tfstate` in the `tf-state` bucket, and `plan` still reports **No changes**: it is the same state, now read from S3. The resources did not move, only the record of them.
+    </Answer>
+  </Predict>
+  <Run>
+The state bucket must exist before Terraform can use it, so create it outside the configuration, and add the backend:
+
+```sh
+export AWS_PROFILE=localstack
+aws s3 mb s3://tf-state
+
+python3 - <<'PY'
+path = "labs/terraform/main.tf"
+text = open(path).read()
+backend = '''terraform {
+  backend "s3" {
+    bucket                      = "tf-state"
+    key                         = "notes/terraform.tfstate"
+    region                      = "eu-west-1"
+    use_path_style              = true
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_requesting_account_id  = true
+    endpoints = {
+      s3 = "http://localstack:4566"
+    }
+  }
+
+'''
+open(path, "w").write(text.replace("terraform {\n", backend, 1))
+PY
+
+make tf CMD="init -migrate-state -force-copy -no-color"
+aws s3 ls s3://tf-state/notes/
+make tf CMD="plan -no-color"
+```
+<Output>
+```text
+# trimmed
+Successfully configured the backend "s3"! Terraform will automatically
+2026-10-29 12:00:57       6413 terraform.tfstate
+No changes. Your infrastructure matches the configuration.
+```
+</Output>
+  </Run>
+  <Verify>
+    - The `s3` backend is configured, and `tf-state` holds `notes/terraform.tfstate`
+    - The plan still reports no changes
+  </Verify>
+</Lab>
+
+Clean up when you are done. `destroy` the resources first, since the state that tracks them is in the bucket:
+
+```sh
+make tf CMD="destroy -auto-approve -no-color"
+```
+
+## What changes on real AWS
+
+<RealAws title="Lock and protect the state bucket">
+  Two applies at once can corrupt the state. On real AWS the `s3` backend supports **locking** (for example `use_lockfile = true`, or a DynamoDB table in older setups), so the second run waits. Turn on versioning for the bucket so a bad state can be rolled back, and block public access, because the state is sensitive.
+</RealAws>
+
+<RealAws title="Workspaces and environments">
+  Variables with one set of files can drive several environments (`dev`, `prod`) if each has its own state, through separate backend keys or workspaces. Keep them separate so a mistake in `dev` cannot touch `prod`.
+</RealAws>
+
+<Note title="Chicken and egg">
+  The state bucket cannot itself be created by the configuration that stores its state in it. Create it by hand or in a small separate configuration, once.
+</Note>
+
+<Recap>
+
+- Variables are inputs and outputs are results, which make one configuration reusable.
+- An argument that cannot change in place forces replacement, so read plans for `forces replacement`.
+- A remote backend keeps one shared state; `init -migrate-state` moves an existing one, and real AWS adds locking.
+
+</Recap>

@@ -37,48 +37,44 @@ IAM:
 
 ## Phase 2 — Compute: Lambda
 
-Lesson pages are written as we go — until then, the targets:
+10. [The execution model](/en/lambda/01-execution-model/) — a handler in a sandbox; cold vs warm; concurrency as separate instances; timeout and memory
+11. [The event object](/en/lambda/02-the-event-object/) — why the function was invoked; manual vs S3 events; synchronous vs asynchronous calls; logs
+12. [SQS triggers](/en/lambda/03-sqs-triggers/) — event source mappings; batch size; reporting partial failures; retries without end
 
-- Execution model: warm sandboxed microVMs; cold vs warm starts; concurrency = instance pool
-- The **event object**: JSON describing _why_ the function was invoked — same function, many trigger shapes
-- Limits: 15 min max, memory slider (memory scales CPU), payload caps
-- Triggers: S3 events and SQS messages (batch size, retries, partial batch failures)
-
-Experiments: deploy a Lambda and invoke manually; prove warmth with a global counter; wire the Phase-1 bucket (upload → Lambda); consume SQS messages (batch size 1, then 10).
+Experiments: deploy a Lambda and invoke it manually; prove warmth with a global counter; wire a bucket (upload → Lambda); consume SQS messages in a batch and retry only the poisoned one.
 
 ## Phase 3 — The serverless chain: API Gateway → Lambda → DynamoDB
 
-- API Gateway: routes, stages, the HTTP → event-JSON translation, throttling
-- DynamoDB paradigm shift: **fast only by key** — partition key picks the shard; design tables around queries first
-- Partition key + sort key; GSIs / LSIs as paid alternate query views
-- RCU / WCU: throughput is purchased per table — the origin of "DynamoDB bills per access"
-- Why DynamoDB modeling ≠ MongoDB modeling: no joins, no ad-hoc queries
+13. [DynamoDB is fast by key](/en/serverless/01-dynamodb-keys/) — partition and sort keys; query vs scan; secondary indexes
+14. [API Gateway turns HTTP into an event](/en/serverless/02-api-gateway/) — routes, stages, the proxy contract; why 403 and 502
+15. [The tasks API](/en/serverless/03-tasks-api/) — the whole chain driven with curl; idempotent deletes
 
-Experiments: build a tasks API (`POST/GET/DELETE /tasks`) and hit it with curl; query by key vs full scan; add a GSI and query by a non-key attribute.
+Everything here uses the REST API flavour of API Gateway, because that is what LocalStack runs. Experiments: build a tasks API (`POST/GET/DELETE /tasks`) and hit it with curl; query by key vs full scan; add a GSI and query by a non-key attribute.
 
 ## Phase 4 — Messaging: SQS (deep) + SNS + EventBridge
 
-- SQS guarantees: **at-least-once delivery** → duplicates happen → consumers need idempotency
-- Visibility timeout: hidden while processing, reappears if not deleted
-- Standard vs FIFO; dead-letter queues as the parking lot after N failures
-- SNS fan-out vs SQS point-to-point; EventBridge routing
+16. [SQS delivery and visibility](/en/messaging/01-sqs-delivery/) — at-least-once; the visibility timeout; standard vs FIFO
+17. [Dead-letter queues](/en/messaging/02-dead-letter-queues/) — redrive policy; parking a poison message; ending the Lambda retry loop
+18. [SNS fan-out](/en/messaging/03-sns-fan-out/) — one publish, many queues; filter policies; raw delivery
+19. [EventBridge routing](/en/messaging/04-eventbridge/) — buses, rules and patterns; SNS or EventBridge
 
-Experiments: watch re-delivery after the visibility timeout; poison a message into a DLQ; fan out one SNS publish to two queues; wire an order API → SNS → two worker Lambdas.
+Experiments: watch re-delivery after the visibility timeout; poison a message into a DLQ; fan out one SNS publish to two queues; route events by content with an EventBridge rule.
 
 ## Phase 5 — Observability + config: CloudWatch + Secrets Manager
 
-- Logs as a product: log groups vs streams, retention, Insights queries
-- Metrics and alarms; structured (JSON) logging at scale
-- Runtime config vs build-time config; secrets never baked into env vars
+20. [Logs as a product](/en/observability/01-logs/) — log groups and streams; structured logs; Logs Insights; retention
+21. [Metrics and alarms](/en/observability/02-metrics-and-alarms/) — statistics over a period; thresholds and alarm states
+22. [Config and secrets](/en/observability/03-config-and-secrets/) — secret versions; runtime reads and caching; Parameter Store
 
-Experiments: structured logging on the Phase-3 API queried via `logs filter-log-events`; store a secret and read it from Lambda at runtime.
+LocalStack does not apply CloudWatch Logs filter patterns or metric filters in this setup, so the lessons query logs with Logs Insights. Experiments: write structured logs and query them; publish a metric and fire an alarm; store a secret and read it from Lambda at runtime.
 
 ## Phase 6 — Infrastructure as Code: Terraform
 
-- Declarative vs imperative: desired state vs actual state; the state file; plan/apply; drift
-- Providers, resources, variables, outputs, remote state
+23. [Desired state](/en/terraform/01-desired-state/) — declarative vs imperative; providers and resources; init, plan, apply
+24. [State and drift](/en/terraform/02-state-and-drift/) — the state file; detecting hand-made changes; destroy and rebuild
+25. [Variables and remote state](/en/terraform/03-variables-and-remote-state/) — variables and outputs; forces replacement; the S3 backend
 
-Experiments: recreate the Phase-3 API with `tflocal`; mutate LocalStack by hand and watch `terraform plan` detect the drift; `destroy` then rebuild in 60 seconds.
+Terraform runs in Docker through Compose (`make tf CMD="plan"`), so there is nothing to install. Experiments: build a bucket, queue and table from one file; mutate LocalStack by hand and watch `terraform plan` detect the drift; destroy, then rebuild from the files; move the state into S3.
 
 ## Phase 7 — Graduation: real AWS (free tier)
 

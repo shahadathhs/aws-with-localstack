@@ -37,48 +37,44 @@ IAM:
 
 ## Phase 2 — কম্পিউট: Lambda
 
-লেসন পেজগুলো ধাপে ধাপে লেখা হবে — ততক্ষণ লক্ষ্যগুলো:
+10. [এক্সিকিউশন মডেল](/bn/lambda/01-execution-model/) — sandbox-এ handler; cold বনাম warm; আলাদা instance হিসেবে concurrency; timeout ও memory
+11. [Event object](/bn/lambda/02-the-event-object/) — ফাংশন কেন invoke হলো; ম্যানুয়াল বনাম S3 event; synchronous বনাম asynchronous কল; লগ
+12. [SQS trigger](/bn/lambda/03-sqs-triggers/) — event source mapping; batch size; আংশিক ব্যর্থতা জানানো; অন্তহীন retry
 
-- Execution model: উষ্ণ sandboxed microVM; cold বনাম warm start; concurrency = instance pool
-- **ইভেন্ট অবজেক্ট**: ফাংশনটি _কেন_ invoke হলো তার JSON বর্ণনা — একই ফাংশন, অনেক trigger shape
-- সীমা: সর্বোচ্চ ১৫ মিনিট, memory slider (memory CPU স্কেল করে), payload ক্যাপ
-- Trigger: S3 event ও SQS message (batch size, retry, partial batch failure)
+এক্সপেরিমেন্ট: Lambda ডিপ্লয় করে ম্যানুয়ালি invoke; global counter দিয়ে warmth প্রমাণ; একটি bucket ওয়্যার করা (আপলোড → Lambda); SQS message batch আকারে consume করে শুধু বিষাক্তটি retry করানো।
 
-এক্সপেরিমেন্ট: Lambda ডিপ্লয় করে ম্যানুয়ালি invoke; global counter দিয়ে warmth প্রমাণ; Phase-1 bucket ওয়্যার করা (আপলোড → Lambda); SQS message consume (batch size 1, তারপর 10)।
+## Phase 3 — সার্ভারলেস শৃঙ্খল: API Gateway → Lambda → DynamoDB
 
-## Phase 3 — সার্ভারলেস চেইন: API Gateway → Lambda → DynamoDB
+13. [DynamoDB key দিয়েই দ্রুত](/bn/serverless/01-dynamodb-keys/) — partition ও sort key; query বনাম scan; secondary index
+14. [API Gateway HTTP-কে event বানায়](/bn/serverless/02-api-gateway/) — route, stage, proxy চুক্তি; কেন 403 ও 502
+15. [Tasks API](/bn/serverless/03-tasks-api/) — পুরো শৃঙ্খল curl দিয়ে চালানো; idempotent delete
 
-- API Gateway: route, stage, HTTP → event-JSON রূপান্তর, throttling
-- DynamoDB-র paradigm shift: **শুধু key দিয়েই দ্রুত** — partition key shard ঠিক করে; query আগে ভেবে টেবিল ডিজাইন
-- Partition key + sort key; GSI / LSI — অতিরিক্ত খরচে বিকল্প query view
-- RCU / WCU: throughput প্রতি টেবিলে কেনা হয় — "DynamoDB bills per access"-এর উৎস
-- DynamoDB modeling ≠ MongoDB modeling: join নেই, ad-hoc query নেই
+এখানে সবকিছু API Gateway-র REST API ধরন ব্যবহার করে, কারণ LocalStack সেটিই চালায়। এক্সপেরিমেন্ট: একটি tasks API বানানো (`POST/GET/DELETE /tasks`) আর curl দিয়ে ডাকা; key দিয়ে query বনাম পুরো scan; GSI যোগ করে non-key attribute-এ query।
 
-এক্সপেরিমেন্ট: tasks API বানানো (`POST/GET/DELETE /tasks`) curl দিয়ে টেস্ট; key দিয়ে query বনাম full scan; GSI যোগ করে non-key attribute দিয়ে query।
+## Phase 4 — মেসেজিং: SQS (গভীর) + SNS + EventBridge
 
-## Phase 4 — মেসেজিং: SQS (ডিপ) + SNS + EventBridge
+16. [SQS delivery ও visibility](/bn/messaging/01-sqs-delivery/) — at-least-once; visibility timeout; standard বনাম FIFO
+17. [Dead-letter queue](/bn/messaging/02-dead-letter-queues/) — redrive policy; poison message পার্ক করা; Lambda-র retry চক্র শেষ করা
+18. [SNS fan-out](/bn/messaging/03-sns-fan-out/) — একটি publish, অনেক queue; filter policy; raw delivery
+19. [EventBridge routing](/bn/messaging/04-eventbridge/) — bus, rule ও pattern; SNS না EventBridge
 
-- SQS গ্যারান্টি: **at-least-once delivery** → duplicate হবেই → consumer idempotent হতে হবে
-- Visibility timeout: প্রসেসিংয়ের সময় লুকানো, ডিলিট না করলে আবার দেখা যায়
-- Standard বনাম FIFO; DLQ — N বার ব্যর্থতার পর parking lot
-- SNS fan-out বনাম SQS point-to-point; EventBridge routing
+এক্সপেরিমেন্ট: visibility timeout-এর পর re-delivery দেখা; poison message DLQ-তে পাঠানো; একটি SNS publish দুটি queue-তে fan-out; EventBridge rule দিয়ে বিষয়বস্তু দেখে event route করা।
 
-এক্সপেরিমেন্ট: visibility timeout শেষে re-delivery দেখা; poison message DLQ-তে পাঠানো; একটি SNS publish দুটি queue-তে; order API → SNS → দুটি worker Lambda।
+## Phase 5 — Observability ও config: CloudWatch + Secrets Manager
 
-## Phase 5 — Observability ও কনফিগ: CloudWatch + Secrets Manager
+20. [Product হিসেবে লগ](/bn/observability/01-logs/) — log group ও stream; কাঠামোবদ্ধ লগ; Logs Insights; retention
+21. [Metric ও alarm](/bn/observability/02-metrics-and-alarms/) — period-এর ওপর statistics; threshold ও alarm state
+22. [Config ও secret](/bn/observability/03-config-and-secrets/) — secret version; runtime-এ পড়া ও cache; Parameter Store
 
-- Log একটি প্রোডাক্ট: log group বনাম stream, retention, Insights query
-- Metrics ও alarm; scale-এ structured (JSON) logging
-- Runtime config বনাম build-time config; secret কখনো env var-এ baked থাকবে না
-
-এক্সপেরিমেন্ট: Phase-3 API-তে structured logging, `logs filter-log-events` দিয়ে query; secret রেখে Lambda থেকে runtime-এ পড়া।
+এই সেটআপে LocalStack CloudWatch Logs-এর filter pattern বা metric filter প্রয়োগ করে না, তাই পাঠগুলো লগ query করে Logs Insights দিয়ে। এক্সপেরিমেন্ট: কাঠামোবদ্ধ লগ লিখে query করা; একটি metric publish করে alarm বাজানো; একটি secret রেখে Lambda থেকে runtime-এ পড়া।
 
 ## Phase 6 — Infrastructure as Code: Terraform
 
-- Declarative বনাম imperative: desired state বনাম actual state; state file; plan/apply; drift
-- Provider, resource, variable, output, remote state
+23. [Desired state](/bn/terraform/01-desired-state/) — declarative বনাম imperative; provider ও resource; init, plan, apply
+24. [State ও drift](/bn/terraform/02-state-and-drift/) — state ফাইল; হাতে করা বদল ধরা; destroy ও rebuild
+25. [Variable ও remote state](/bn/terraform/03-variables-and-remote-state/) — variable ও output; forces replacement; S3 backend
 
-এক্সপেরিমেন্ট: `tflocal` দিয়ে Phase-3 API পুনর্নির্মাণ; LocalStack-এ হাতে পরিবর্তন করে `terraform plan`-এ drift দেখা; `destroy` করে ৬০ সেকেন্ডে পুনর্গঠন।
+Terraform Compose দিয়ে Docker-এ চলে (`make tf CMD="plan"`), তাই কিছু install করতে হয় না। এক্সপেরিমেন্ট: একটি ফাইল থেকে bucket, queue ও table বানানো; হাতে LocalStack বদলে `terraform plan`-এ drift ধরা দেখা; destroy করে ফাইল থেকে আবার বানানো; state S3-তে সরানো।
 
 ## Phase 7 — গ্র্যাজুয়েশন: রিয়েল AWS (free tier)
 

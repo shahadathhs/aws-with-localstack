@@ -1,0 +1,147 @@
+---
+title: Metrics and alarms
+description: A metric is a number over time. An alarm watches one and changes state when it crosses a line. Publish a custom metric, read its statistics and watch an alarm fire.
+time: 11 min
+needs:
+  - Logs as a product
+learn:
+  - How data points become statistics over a period
+  - How an alarm compares a statistic with a threshold
+  - What states an alarm can be in and why
+---
+
+## Numbers over time
+
+Logs say what happened. A **metric** says how much, in a form you can graph and alert on: orders placed, queue depth, errors per minute. Many AWS services publish metrics for you; your own code can publish **custom metrics**.
+
+A metric is named by a **namespace** (a grouping such as `Shop`) and a **metric name** (`Orders`). You send **data points**: a value, a unit and a timestamp. CloudWatch then answers questions as **statistics** over a **period**: `Sum`, `Average`, `Minimum`, `Maximum` and `SampleCount`. Ask for a one-hour period and you get one number per hour, however many points arrived.
+
+An **alarm** watches one statistic. Every period it compares the value with a **threshold** and sets its **state**:
+
+- `OK`: the value is on the right side of the line.
+- `ALARM`: the line was crossed.
+- `INSUFFICIENT_DATA`: not enough data to say.
+
+When the state changes, an alarm can notify an SNS topic, which is how a metric ends up as a message to a person or a Lambda function.
+
+## Publish, read, alarm
+
+<Lab title="two data points, one sum" time="~4 min">
+  <Predict>
+    You publish the values 3 and 5 to `Shop` / `Orders`, then ask for `Sum`, `Average` and `SampleCount` over a one-hour period. What do you get?
+
+    <Answer>
+      One data point for the period: `Sum` **8**, `Average` **4**, `SampleCount` **2**. The two values are combined into the statistics; the individual points are gone.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+aws cloudwatch put-metric-data --namespace Shop --metric-name Orders --value 3 --unit Count
+aws cloudwatch put-metric-data --namespace Shop --metric-name Orders --value 5 --unit Count
+
+aws cloudwatch list-metrics --namespace Shop --query 'Metrics[].MetricName' --output text
+
+START=$(python3 -c "import datetime as d; print((d.datetime.now(d.timezone.utc) - d.timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+END=$(python3 -c "import datetime as d; print((d.datetime.now(d.timezone.utc) + d.timedelta(minutes=5)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+aws cloudwatch get-metric-statistics --namespace Shop --metric-name Orders \
+  --start-time "$START" --end-time "$END" --period 3600 \
+  --statistics Sum Average SampleCount \
+  --query 'Datapoints[0].[Sum,Average,SampleCount]' --output text
+```
+<Output>
+```text
+Orders
+8.0	4.0	2.0
+```
+</Output>
+  </Run>
+  <Verify>
+    - `Orders` is listed under the `Shop` namespace
+    - The statistics are Sum 8, Average 4, SampleCount 2
+  </Verify>
+</Lab>
+
+<Lab title="an alarm that fires" time="~4 min">
+  <Predict>
+    An alarm watches `Sum` of `Shop` / `Orders` over 60-second periods, with the threshold set to *greater than 6*. You publish 10 more, and check the alarm repeatedly. What state does it reach, and when?
+
+    <Answer>
+      It ends in **ALARM**. The 3 and 5 from the last lab, and the 10 you add now, all fall in the same minute, so the sum is well over 6. If you took longer than a minute to get here, the old points have aged out and the alarm needs a moment: an alarm is evaluated on a schedule, so its state lags the data by a few seconds to a minute.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+aws cloudwatch put-metric-alarm --alarm-name many-orders \
+  --namespace Shop --metric-name Orders --statistic Sum --period 60 \
+  --evaluation-periods 1 --threshold 6 \
+  --comparison-operator GreaterThanThreshold --treat-missing-data notBreaching
+
+aws cloudwatch put-metric-data --namespace Shop --metric-name Orders --value 10 --unit Count
+
+for i in 1 2 3 4 5 6; do
+  aws cloudwatch describe-alarms --alarm-names many-orders \
+    --query 'MetricAlarms[0].StateValue' --output text
+  sleep 10
+done
+```
+<Output>
+```text
+# if the earlier data is more than a minute old you first see OK for a while
+ALARM
+ALARM
+ALARM
+ALARM
+ALARM
+ALARM
+```
+</Output>
+  </Run>
+  <Verify>
+    - The state ends as `ALARM`, possibly after a few `OK` lines first
+    - `aws cloudwatch describe-alarm-history --alarm-name many-orders` lists each state change
+  </Verify>
+</Lab>
+
+<Lab title="testing what an alarm does" time="~2 min" collapsed>
+  <Predict>
+    You want to see what your notification setup does without waiting for real data. How can you force the alarm into a state?
+
+    <Answer>
+      `set-alarm-state` overrides the state, with a reason, and triggers the alarm's actions as if the metric had crossed. The next evaluation then sets it back according to the data.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+aws cloudwatch set-alarm-state --alarm-name many-orders --state-value OK --state-reason "testing"
+aws cloudwatch describe-alarms --alarm-names many-orders \
+  --query 'MetricAlarms[0].[StateValue,StateReason]' --output text
+```
+  </Run>
+  <Verify>
+    - The state reads `OK` and the reason is `testing`
+  </Verify>
+</Lab>
+
+## What changes on real AWS
+
+<RealAws cost title="Custom metrics cost per metric">
+  Each distinct metric (a name plus its dimensions) is billed monthly, so adding a high-cardinality dimension such as a user id multiplies the bill. Standard AWS service metrics are free for most services, and alarms are billed per alarm.
+</RealAws>
+
+<RealAws title="Alarm actions">
+  A real alarm usually names an SNS topic to notify on `ALARM`, and often on `OK` as well. Pair it with the SNS lesson: topic, then queue, email or Lambda. Resolution matters too: standard metrics arrive at one-minute granularity, and a short alarm period on sparse data flips between `OK` and `INSUFFICIENT_DATA`.
+</RealAws>
+
+<Note title="Choose the statistic that fits">
+  `Sum` suits counts (orders, errors), `Average` suits latency, and a percentile such as p99 suits tail latency. An average hides a few terrible requests among many fast ones.
+</Note>
+
+<Recap>
+
+- A metric is named by namespace and name; CloudWatch turns data points into statistics over a period.
+- An alarm compares a statistic with a threshold each period, and sits in `OK`, `ALARM` or `INSUFFICIENT_DATA`.
+- State lags the data, and `set-alarm-state` lets you test what happens on a change.
+
+</Recap>

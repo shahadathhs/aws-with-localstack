@@ -48,9 +48,12 @@ const en: Copy = {
   phases: [
     { n: '0', title: 'Tooling', text: 'Compose, AWS CLI, profiles, how LocalStack routes requests', lessons: 4, done: 4, status: 'done' },
     { n: '1', title: 'S3 and IAM', text: 'Object model, versioning, presigned URLs, policies, ARNs', lessons: 9, done: 9, status: 'done' },
-    { n: '2', title: 'Lambda', text: 'Execution model, the event object, S3 and SQS triggers', lessons: 3, done: 0, status: 'next' },
-    { n: '3', title: 'API Gateway + DynamoDB', text: 'The serverless chain; design tables around queries', lessons: 3, done: 0, status: 'planned' },
-    { n: '4', title: 'SQS, SNS, EventBridge', text: 'Messaging, retries, fan-out, dead-letter queues', lessons: 3, done: 0, status: 'planned' },
+    { n: '2', title: 'Lambda', text: 'Execution model, the event object, S3 and SQS triggers', lessons: 3, done: 3, status: 'done' },
+    { n: '3', title: 'API Gateway + DynamoDB', text: 'The serverless chain; design tables around queries', lessons: 3, done: 3, status: 'done' },
+    { n: '4', title: 'SQS, SNS, EventBridge', text: 'Messaging, retries, fan-out, dead-letter queues', lessons: 4, done: 4, status: 'done' },
+    { n: '5', title: 'CloudWatch + Secrets Manager', text: 'Logs, metrics, alarms, runtime config and secrets', lessons: 3, done: 3, status: 'done' },
+    { n: '6', title: 'Terraform', text: 'Rebuild everything as code; state, plan, apply, drift', lessons: 3, done: 3, status: 'done' },
+    { n: '7', title: 'Real AWS', text: 'Graduate from the sandbox to the free tier', lessons: 3, done: 0, status: 'next' },
   ],
   short: {
     label: 'The short list',
@@ -98,9 +101,12 @@ const bn: Copy = {
   phases: [
     { n: '০', title: 'টুলিং', text: 'Compose, AWS CLI, প্রোফাইল, LocalStack কীভাবে রিকোয়েস্ট পাঠায়', lessons: 4, done: 4, status: 'done' },
     { n: '১', title: 'S3 ও IAM', text: 'অবজেক্ট মডেল, ভার্সনিং, presigned URL, পলিসি, ARN', lessons: 9, done: 9, status: 'done' },
-    { n: '২', title: 'Lambda', text: 'এক্সিকিউশন মডেল, ইভেন্ট অবজেক্ট, S3 ও SQS ট্রিগার', lessons: 3, done: 0, status: 'next' },
-    { n: '৩', title: 'API Gateway + DynamoDB', text: 'সার্ভারলেস চেইন; কোয়েরি ধরে টেবিল ডিজাইন', lessons: 3, done: 0, status: 'planned' },
-    { n: '৪', title: 'SQS, SNS, EventBridge', text: 'মেসেজিং, রিট্রাই, ফ্যান-আউট, ডেড-লেটার কিউ', lessons: 3, done: 0, status: 'planned' },
+    { n: '২', title: 'Lambda', text: 'এক্সিকিউশন মডেল, ইভেন্ট অবজেক্ট, S3 ও SQS ট্রিগার', lessons: 3, done: 3, status: 'done' },
+    { n: '৩', title: 'API Gateway + DynamoDB', text: 'সার্ভারলেস চেইন; কোয়েরি ধরে টেবিল ডিজাইন', lessons: 3, done: 3, status: 'done' },
+    { n: '৪', title: 'SQS, SNS, EventBridge', text: 'মেসেজিং, রিট্রাই, ফ্যান-আউট, ডেড-লেটার কিউ', lessons: 4, done: 4, status: 'done' },
+    { n: '৫', title: 'CloudWatch + Secrets Manager', text: 'লগ, মেট্রিক, অ্যালার্ম, রানটাইম কনফিগ ও সিক্রেট', lessons: 3, done: 3, status: 'done' },
+    { n: '৬', title: 'Terraform', text: 'সবকিছু কোড হিসেবে আবার বানানো; state, plan, apply, drift', lessons: 3, done: 3, status: 'done' },
+    { n: '৭', title: 'Real AWS', text: 'স্যান্ডবক্স থেকে free tier-এ উত্তরণ', lessons: 3, done: 0, status: 'next' },
   ],
   short: {
     label: 'সংক্ষেপে',

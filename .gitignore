@@ -7,6 +7,10 @@
 .localstack-data/
 volume/
 
+# --- Terraform lab (files you write while following the lessons) ---
+labs/terraform/*
+!labs/terraform/README.md
+
 # --- Node / website ---
 node_modules/
 dist/

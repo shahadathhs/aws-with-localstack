@@ -3,6 +3,11 @@
     "getting-started",
     "basics",
     "s3",
-    "iam"
+    "iam",
+    "lambda",
+    "serverless",
+    "messaging",
+    "observability",
+    "terraform"
   ]
 }

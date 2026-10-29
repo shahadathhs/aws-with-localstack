@@ -15,7 +15,7 @@ The reference lesson is `website/content/docs/{en,bn}/s3/02-versioning.mdx`: rea
 
 | Type | Where | Shape |
 | --- | --- | --- |
-| **Lesson with a lab** | `s3/`, `iam/`, later services | header fields, 3 to 5 `##` sections (concept, experiment, real AWS), at least one `<Lab>`, diagrams, callouts, `<Recap>` |
+| **Lesson with a lab** | `s3/`, `iam/`, `lambda/`, `serverless/`, `messaging/`, `observability/`, `terraform/`, later services | header fields, 3 to 5 `##` sections (concept, experiment, real AWS), at least one `<Lab>`, diagrams, callouts, `<Recap>` |
 | **Setup or reference guide** | `getting-started/`, `basics/` | header fields, `##` sections, `<Tabs>` for per-OS or per-tool variants, callouts, `<Recap>`. No `<Lab>`: there is nothing to predict. |
 | **Plain page** | `learning-plan`, `author` | ordinary markdown, no kit |
 

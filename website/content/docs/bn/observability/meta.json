@@ -1,0 +1,8 @@
+{
+  "title": "Observability and config",
+  "pages": [
+    "01-logs",
+    "02-metrics-and-alarms",
+    "03-config-and-secrets"
+  ]
+}

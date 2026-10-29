@@ -1,0 +1,152 @@
+---
+title: The event object
+description: The same function can be called by you, by S3 or by a queue. What differs is the event, a JSON document that says why it was invoked.
+time: 11 min
+needs:
+  - The execution model
+  - Event notifications
+learn:
+  - What the event looks like for a manual call and for an S3 upload
+  - Why a function must read the event and not assume its shape
+  - How to find a function's output in its logs
+---
+
+## One function, many callers
+
+A handler never asks who called it. The platform passes in an `event`, a JSON document describing **why the function was invoked**, and the handler works out the rest. The same code can serve a person at a terminal, an upload to S3 or a message from a queue; only the event changes.
+
+| Caller | The event is |
+| --- | --- |
+| You, with `aws lambda invoke` | exactly the payload you sent |
+| S3 | `{"Records": [...]}`, one record per object event |
+| SQS | `{"Records": [...]}`, one record per message, in a batch |
+
+The `context` argument is separate: it describes this invocation (its request id, how much time is left), not the cause.
+
+Two ways to call a function matter here:
+
+- **Synchronous** (the default): you wait, and the return value comes back to you.
+- **Asynchronous** (`--invocation-type Event`): the platform queues the call, answers `202` at once and runs the handler later. S3 calls functions this way, so a return value from a handler that S3 invoked goes nowhere.
+
+## See the event for yourself
+
+This function does nothing except print its event. Whatever it prints lands in the function's **log group**, `/aws/lambda/<name>`.
+
+<Lab title="print the event" time="~6 min">
+  <Predict>
+    You invoke the function with `{"a": 1}`. Then you upload `uploads/f.txt` to a bucket wired to it. Which of the two events has a top-level `Records` key, and where in it is the file name?
+
+    <Answer>
+      Only the S3 event. The manual event is just `{"a": 1}`. In the S3 event, `Records[0].s3.object.key` is `uploads/f.txt` and `Records[0].s3.bucket.name` is the bucket. As with the queue in the [S3 events lesson](/en/s3/06-events/), you get the name of the object, not its contents.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+mkdir -p /tmp/lam && cd /tmp/lam
+
+cat > show.py <<'PY'
+import json
+
+
+def handler(event, context):
+    print(json.dumps(event))
+    return {"ok": True}
+PY
+zip show.zip show.py
+aws lambda create-function --function-name show --runtime python3.12 \
+  --handler show.handler --zip-file fileb://show.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name show
+```
+
+The role comes from the previous lesson; create it again with the command there if you skipped it. First a manual call, asking for the tail of the log in the response:
+
+```sh
+aws lambda invoke --function-name show --payload '{"a":1}' \
+  --cli-binary-format raw-in-base64-out --log-type Tail out.json \
+  --query LogResult --output text | base64 -d
+```
+<Output>
+```text
+# the REPORT line (timings) is left out, and your request ids differ
+START RequestId: 51326028-ea48-4629-bbc3-61aa1cbc9656 Version: $LATEST
+{"a": 1}
+END RequestId: 51326028-ea48-4629-bbc3-61aa1cbc9656
+```
+</Output>
+
+Now wire a bucket to the function. S3 must be allowed to invoke it, which you grant with a **resource policy** on the function:
+
+```sh
+aws s3 mb s3://lam-bucket
+aws lambda add-permission --function-name show --statement-id s3 \
+  --action lambda:InvokeFunction --principal s3.amazonaws.com \
+  --source-arn arn:aws:s3:::lam-bucket
+
+aws s3api put-bucket-notification-configuration --bucket lam-bucket \
+  --notification-configuration '{
+    "LambdaFunctionConfigurations": [{
+      "LambdaFunctionArn": "arn:aws:lambda:eu-west-1:000000000000:function:show",
+      "Events": ["s3:ObjectCreated:*"]
+    }]
+  }'
+
+echo hi > f.txt
+aws s3 cp f.txt s3://lam-bucket/uploads/f.txt
+aws s3 cp f.txt "s3://lam-bucket/uploads/my report.txt"
+sleep 4
+aws logs tail /aws/lambda/show --since 5m --format short
+```
+  </Run>
+  <Verify>
+    - The manual call printed `{"a": 1}` and nothing else: the event is the payload
+    - The log shows one `{"Records": [...]}` line per upload, with `"eventSource": "aws:s3"` and `"eventName": "ObjectCreated:Put"`
+    - `s3.bucket.name` is `lam-bucket`, and `s3.object` has `key`, `size` and `eTag`
+    - The second key arrives as `uploads/my%20report.txt`: **the key is URL-encoded**
+  </Verify>
+</Lab>
+
+<Lab title="a call you do not wait for" time="~2 min" collapsed>
+  <Predict>
+    You invoke `show` again with `--invocation-type Event`. What status code comes back, and what is in the output file?
+
+    <Answer>
+      **202**, and an empty file. The platform accepted the call and will run it later; there is nothing to return yet.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+aws lambda invoke --function-name show --payload '{"a":1}' \
+  --cli-binary-format raw-in-base64-out --invocation-type Event out.json \
+  --query StatusCode --output text
+cat out.json
+```
+  </Run>
+  <Verify>
+    - `202` is printed, and `out.json` is empty
+    - A moment later `aws logs tail /aws/lambda/show --since 1m` shows the call ran
+  </Verify>
+</Lab>
+
+## What changes on real AWS
+
+<RealAws title="Decode the key">
+  S3 URL-encodes the key in the event, and on real AWS a space becomes `+` rather than `%20`. A handler that uses `Records[0].s3.object.key` to fetch the object must decode it first, or it will look for a key that does not exist.
+</RealAws>
+
+<Note title="One record or many">
+  Always loop over `Records`. S3 sent one record per upload here, but the structure is a list because other sources, such as queues, send several at once.
+</Note>
+
+<Note title="Asynchronous means retries">
+  When a function invoked asynchronously fails, the platform retries it, twice by default, and can hand the event to a dead-letter queue or a failure destination. Your code may therefore run more than once for one upload, so make it idempotent.
+</Note>
+
+<Recap>
+
+- The event says why the function ran; a manual call passes your payload, S3 passes `Records`.
+- Read the event defensively and decode S3 keys before using them.
+- `print` output goes to the function's log group, and `--log-type Tail` shows the end of it right away.
+
+</Recap>

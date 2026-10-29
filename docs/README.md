@@ -60,8 +60,8 @@ wide, too narrow for two diagrams side by side; without the TOC it is about 730p
 
 ## Navigation
 
-- **Top bar: three links only**: Learning plan, Getting started, Basics. Services (S3, IAM, and later Lambda,
-  DynamoDB...) are not in the top bar: the list would grow with every phase. They live in the lesson sidebar,
+- **Top bar: three links only**: Learning plan, Getting started, Basics. Services (S3, IAM, Lambda,
+  DynamoDB, SQS...) are not in the top bar: the list would grow with every phase. They live in the lesson sidebar,
   grouped by service, and on the Learning plan page.
 - **Desktop:** brand, three links, search (⌘K), language, theme. Every page, home and lessons, uses the same
   1080px column and header.

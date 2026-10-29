@@ -1,0 +1,174 @@
+---
+title: API Gateway HTTP-কে event বানায়
+description: API Gateway একটি HTTP অনুরোধ নেয়, একটি route-এর সঙ্গে মেলায় এবং তোমার Lambda ফাংশনকে একটি JSON event দেয়। ফাংশন ঠিক কী পায় আর কী ফেরত দিতে হয়, দেখো।
+time: ১৪ মিনিট
+needs:
+  - Event object
+  - Docker Compose দিয়ে LocalStack চালানো
+learn:
+  - Method ও path কীভাবে route হয়, আর route কীভাবে event হয়
+  - Lambda proxy integration বিনিময়ে কী আশা করে
+  - অজানা route কেন 403 দেয় আর ভাঙা handler কেন 502
+---
+
+## অনুবাদের স্তর
+
+Lambda HTTP বোঝে না; সে একটি event নেয় আর একটি মান ফেরত দেয়। **API Gateway** সামনে বসে অনুবাদ করে: `curl` বা ব্রাউজারের অনুরোধ হয়ে যায় একটি invocation, আর ফাংশনের উত্তর হয়ে যায় HTTP response।
+
+```text
+client --HTTP--> API Gateway --event JSON--> Lambda --response object--> API Gateway --HTTP--> client
+         (route + stage)                    (your handler)           (statusCode, headers, body)
+```
+
+API Gateway-র **REST API**-এর অংশগুলো:
+
+- **Resource**: একটি path অংশ, যেমন `/hello`, বা একটি প্যারামিটার, যেমন `/{name}`। Resource-গুলো URL-এ নেস্ট হয়।
+- **Method**: `GET`, `POST` ইত্যাদি, একটি resource-এ লাগানো। `ANY` সব method মেলায়।
+- **Integration**: method ডাকা হলে কী চলবে। **Lambda proxy** ধরনে (`AWS_PROXY`) পুরো অনুরোধ একটি ফাংশনে চলে যায়।
+- **Stage**: API-র একটি নামযুক্ত, ডিপ্লয় করা snapshot (`dev`, `prod`)। কোনো stage-এ **deployment** না বানালে কিছুই পৌঁছানো যায় না, আর stage-এর নাম URL-এর অংশ।
+
+Proxy integration-এ দুই দিকের চুক্তি স্থির। ভেতরে: `httpMethod`, `path`, `resource`, `pathParameters`, `queryStringParameters`, `headers` ও `body` (সবসময় string বা `null`) সহ একটি event। বাইরে: `statusCode`, ঐচ্ছিক `headers`, আর **string** `body` সহ একটি object। এর বাইরে সবই ভুল গঠনের response।
+
+## একটি বানাও আর event দেখো
+
+নিচের ফাংশন যা পেয়েছে তাই ফেরত দেয়। `?fail=1` দিলে ইচ্ছে করেই এমন কিছু ফেরত দেয় যা বৈধ proxy response নয়।
+
+<Lab title="route জোড়ো আর event পড়ো" time="~৮ মিনিট">
+  <Predict>
+    তুমি `GET /hello/ana?lang=bn` ডাকলে, তারপর JSON body দিয়ে `POST /hello/ana`। Route হলো `/hello/{name}`। প্রতিটি কলে `pathParameters` ও `queryStringParameters`-এ কী থাকবে?
+
+    <Answer>
+      প্রথম কলে: `pathParameters` হলো `{"name": "ana"}` আর query `{"lang": "bn"}`। POST-এ: `pathParameters` একই, query `null` (query string নেই, তাই ফাঁকা object-ও নেই), আর body হলো তোমার পাঠানো JSON লেখা, string হিসেবে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+mkdir -p /tmp/gw && cd /tmp/gw
+
+aws iam create-role --role-name lambda-role --assume-role-policy-document '{
+  "Version": "2012-10-17",
+  "Statement": [{ "Effect": "Allow", "Principal": { "Service": "lambda.amazonaws.com" }, "Action": "sts:AssumeRole" }]
+}'
+
+cat > echo.py <<'PY'
+import json
+
+
+def handler(event, context):
+    seen = {
+        "method": event["httpMethod"],
+        "resource": event["resource"],
+        "path": event["path"],
+        "pathParameters": event["pathParameters"],
+        "query": event["queryStringParameters"],
+        "body": event["body"],
+    }
+    if event["queryStringParameters"] and event["queryStringParameters"].get("fail"):
+        return seen  # not a valid proxy response: no statusCode
+    return {"statusCode": 200, "headers": {"content-type": "application/json"}, "body": json.dumps(seen)}
+PY
+zip echo.zip echo.py
+aws lambda create-function --function-name echo --runtime python3.12 \
+  --handler echo.handler --zip-file fileb://echo.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name echo
+```
+
+Lambda-র পাঠগুলো থেকে রোলটি আগেই থাকতে পারে; থাকলে প্রথম কমান্ডটি নিরীহভাবে ব্যর্থ হবে। এবার API বানাও: একটি resource `/hello`, তার শিশু `/hello/{name}`, একটি `ANY` method, একটি Lambda proxy integration, আর `dev` stage-এ একটি deployment।
+
+```sh
+API=$(aws apigateway create-rest-api --name echo-api --query id --output text)
+ROOT=$(aws apigateway get-resources --rest-api-id $API --query 'items[0].id' --output text)
+HELLO=$(aws apigateway create-resource --rest-api-id $API --parent-id $ROOT \
+  --path-part hello --query id --output text)
+NAME=$(aws apigateway create-resource --rest-api-id $API --parent-id $HELLO \
+  --path-part '{name}' --query id --output text)
+
+aws apigateway put-method --rest-api-id $API --resource-id $NAME \
+  --http-method ANY --authorization-type NONE
+aws apigateway put-integration --rest-api-id $API --resource-id $NAME \
+  --http-method ANY --type AWS_PROXY --integration-http-method POST \
+  --uri arn:aws:apigateway:eu-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-west-1:000000000000:function:echo/invocations
+
+aws apigateway create-deployment --rest-api-id $API --stage-name dev
+aws lambda add-permission --function-name echo --statement-id apigw \
+  --action lambda:InvokeFunction --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:eu-west-1:000000000000:$API/*/*/*"
+```
+
+দুটি জিনিস ভোলা সহজ: integration-এর `--integration-http-method` সবসময় `POST` (ক্লায়েন্ট যাই ব্যবহার করুক, API Gateway এভাবেই Lambda ডাকে), আর S3-র মতোই API Gateway-র ফাংশন invoke করার অনুমতি লাগে। API এখন তার id থেকে বানানো URL-এ পৌঁছানো যায়:
+
+```sh
+URL=http://$API.execute-api.localhost.localstack.cloud:4566/dev
+
+curl -s "$URL/hello/ana?lang=bn"; echo
+curl -s -X POST "$URL/hello/ana" -H 'content-type: application/json' -d '{"a":1}'; echo
+```
+<Output>
+```text
+{"method": "GET", "resource": "/hello/{name}", "path": "/hello/ana", "pathParameters": {"name": "ana"}, "query": {"lang": "bn"}, "body": null}
+{"method": "POST", "resource": "/hello/{name}", "path": "/hello/ana", "pathParameters": {"name": "ana"}, "query": null, "body": "{\"a\":1}"}
+```
+</Output>
+  </Run>
+  <Verify>
+    - `resource` হলো route-এর ছাঁচ `/hello/{name}`, `path` আসল path, আর `pathParameters.name` হলো `ana`
+    - GET-এ `query` হলো `{"lang": "bn"}`, POST-এ `null`
+    - POST-এর `body` তোমার JSON, এখনো লেখা হিসেবে
+  </Verify>
+</Lab>
+
+## ব্যর্থ হওয়ার দুটি উপায়
+
+<Lab title="অজানা route আর ভাঙা handler" time="~৪ মিনিট">
+  <Predict>
+    তুমি `GET /hello` (নাম ছাড়া) ডাকলে, তারপর `GET /hello/ana?fail=1`, যেখানে handler `statusCode` ছাড়া একটি dictionary ফেরত দেয়। কোন status code আসবে?
+
+    <Answer>
+      প্রথমটির জন্য **403**, বার্তা `Missing Authentication Token`: কোনো route মেলেনি, আর API Gateway ভ্রান্তিকরভাবে সেটিকে authentication সমস্যা বলে। দ্বিতীয়টির জন্য **502**, `Internal server error`: ফাংশন ঠিকই চলেছে, কিন্তু তার উত্তর বৈধ proxy response ছিল না।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+curl -s -w "  -> %{http_code}\n" "$URL/hello"
+curl -s -w "  -> %{http_code}\n" "$URL/hello/ana?fail=1"
+```
+<Output>
+```text
+{"message": "Missing Authentication Token"}  -> 403
+{"message": "Internal server error"}  -> 502
+```
+</Output>
+  </Run>
+  <Verify>
+    - যে path কোনো resource-এর সঙ্গে মেলে না সেটি 403, 404 নয়
+    - যে handler-এর ফলাফলে সঠিক `statusCode` ও string `body` নেই সেটি 502, ফাংশন নিজে সফল হলেও
+  </Verify>
+</Lab>
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws title="HTTP API, হালকা বিকল্প">
+  AWS API Gateway-র আরেকটি, সস্তা ধরন দেয়, নাম HTTP API, আরও পাতলা event সহ। এই কোর্স REST API ব্যবহার করে, কারণ এখানে LocalStack সেটিই চালায়; এই পাঠের ধারণাগুলো (route, stage, proxy চুক্তি) সেখানেও খাটে।
+</RealAws>
+
+<RealAws cost title="প্রতি অনুরোধের দাম আর throttling">
+  API Gateway প্রতি অনুরোধে বিল করে, আর account ও stage স্তরে rate limit প্রয়োগ করে (ছাড়ালে HTTP 429)। সীমা আর usage plan রিয়েল AWS-এ যা চিনবে এমন কনফিগারেশন, এখানে যার ওপর ভরসা করার কিছু নেই।
+</RealAws>
+
+<Note title="content type পাঠাও">
+  `curl -d`-তে `content-type` header না দিলে `curl` body-কে ফর্ম বলে চিহ্নিত করে। Body JSON হলে সবসময় `-H 'content-type: application/json'` দাও, নইলে handler সেটি URL-encoded পেতে পারে।
+</Note>
+
+<Note title="CORS-এর উত্তর তোমার">
+  অন্য origin থেকে ব্রাউজার তোমার API ডাকলে response-এ ঠিক `Access-Control-Allow-*` header লাগে। Proxy integration-এ handler সেগুলো বসায়, কারণ API Gateway তোমার header অক্ষত পাঠায়।
+</Note>
+
+<Recap>
+
+- API Gateway অনুরোধটিকে resource ও method-এর সঙ্গে মেলায়, আর Lambda proxy integration সেটি event হিসেবে পাঠায়।
+- Handler-কে উত্তর দিতে হয় `statusCode`, `headers` আর string `body` দিয়ে, নইলে API Gateway 502 দেয়।
+- Deployment API-কে stage-এ না বসালে কিছুই পৌঁছানো যায় না, আর না-মেলা path 403 দেয়।
+
+</Recap>

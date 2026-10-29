@@ -1,0 +1,198 @@
+---
+title: Tasks API
+description: তিনটি অংশ জোড়ো। অনুরোধ API Gateway দিয়ে একটি Lambda ফাংশনে যায়, যে DynamoDB টেবিল পড়ে ও লেখে, আর তুমি curl দিয়ে সেটি চালাও।
+time: ১৪ মিনিট
+needs:
+  - DynamoDB key দিয়েই দ্রুত
+  - API Gateway HTTP-কে event বানায়
+learn:
+  - API Gateway, Lambda ও DynamoDB কীভাবে একটি অনুরোধ-পথে মেলে
+  - একটি handler কীভাবে method পড়ে কয়েকটি route সামলায়
+  - Delete কেন বারবার চালানো নিরাপদ
+---
+
+## শৃঙ্খল
+
+এখন `POST /tasks` অনুরোধ তিনটি managed সার্ভিসের ভেতর দিয়ে যায়, আর তুমি একটিও চালাও না:
+
+```text
+curl --> API Gateway --> Lambda (handler) --> DynamoDB
+            routes         your logic           the data
+```
+
+API Gateway-র হাতে URL ও routing। Lambda-র হাতে লজিক। DynamoDB-র হাতে ডেটা। বাকি দুটি না ছুঁয়ে যেকোনো একটি বদলানো যায়, আর প্রতিটি আলাদাভাবে স্কেল ও বিল হয়।
+
+API-র তিনটি route, সবই **একটি** ফাংশন সামলায়, যে HTTP method দেখে:
+
+| Route | কী করে | DynamoDB কল |
+| --- | --- | --- |
+| `POST /tasks` | task বানায় | `put_item` |
+| `GET /tasks` | ইউজারের task তালিকা করে | partition key-তে `query` |
+| `DELETE /tasks/{id}` | একটি task সরায় | পুরো key দিয়ে `delete_item` |
+
+`GET /tasks` হলো key-পাঠের সেই query: একটি partition key (`userId`) আর আর কিছু নয়, তাই টেবিলে যত ইউজারই থাকুক সেটি দ্রুত থাকে। এখানে ইউজার `ana` স্থির; আসল API ইউজার নেয় কলারের যাচাই হওয়া পরিচয় থেকে, কখনো request body থেকে নয়।
+
+## বানাও
+
+এই ল্যাব [key-পাঠের](/bn/serverless/01-dynamodb-keys/) `tasks` টেবিল ব্যবহার করে। না থাকলে আগে সেখানে বানিয়ে নাও। ফাংশনের `boto3` লাগে, যা Lambda Python runtime-এ আছে, আর LocalStack-এর ভেতরে কোনো endpoint সেটিং ছাড়াই সেটি DynamoDB-তে পৌঁছায়।
+
+<Lab title="API ডিপ্লয় করো আর curl দিয়ে চালাও" time="~১০ মিনিট">
+  <Predict>
+    তুমি `write lesson` নামে একটি task `POST` করলে, `GET /tasks` করলে, নতুন task-টি id দিয়ে `DELETE` করলে, আর আবার `DELETE` করলে। POST ও দুটি delete-এর কাছ থেকে কোন status code আশা করো?
+
+    <Answer>
+      POST-এ **২০১**। প্রথম delete-এ **২০৪**, আর দ্বিতীয়বারও **২০৪**: যে item আগেই নেই তা মুছলে ভুল হয় না, আর DynamoDB-র `delete_item` অভিযোগ করে না। এতে operation-টি **idempotent**, তাই ক্লায়েন্ট নিরাপদে retry করতে পারে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+mkdir -p /tmp/gw && cd /tmp/gw
+
+cat > api.py <<'PY'
+import json
+import uuid
+
+import boto3
+
+table = boto3.resource("dynamodb").Table("tasks")
+
+
+def reply(status, body):
+    return {"statusCode": status, "headers": {"content-type": "application/json"}, "body": json.dumps(body)}
+
+
+def handler(event, context):
+    method = event["httpMethod"]
+    params = event.get("pathParameters") or {}
+    user = "ana"
+
+    if method == "POST":
+        task = {"userId": user, "taskId": uuid.uuid4().hex[:8], "title": json.loads(event["body"])["title"]}
+        table.put_item(Item=task)
+        return reply(201, task)
+    if method == "GET":
+        items = table.query(KeyConditionExpression="userId = :u", ExpressionAttributeValues={":u": user})["Items"]
+        return reply(200, items)
+    if method == "DELETE":
+        table.delete_item(Key={"userId": user, "taskId": params["id"]})
+        return reply(204, "")
+    return reply(405, {"error": "method not allowed"})
+PY
+zip api.zip api.py
+aws lambda create-function --function-name tasks-api --runtime python3.12 \
+  --handler api.handler --zip-file fileb://api.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name tasks-api
+```
+
+রোলটি আগের পাঠগুলো থেকে আসে। এবার API: `POST` ও `GET` সহ `/tasks`, আর `DELETE` সহ `/tasks/{id}`, সবই একই ফাংশনে proxy করা।
+
+```sh
+URI=arn:aws:apigateway:eu-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-west-1:000000000000:function:tasks-api/invocations
+
+API=$(aws apigateway create-rest-api --name tasks --query id --output text)
+ROOT=$(aws apigateway get-resources --rest-api-id $API --query 'items[0].id' --output text)
+TASKS=$(aws apigateway create-resource --rest-api-id $API --parent-id $ROOT \
+  --path-part tasks --query id --output text)
+ONE=$(aws apigateway create-resource --rest-api-id $API --parent-id $TASKS \
+  --path-part '{id}' --query id --output text)
+
+aws apigateway put-method --rest-api-id $API --resource-id $TASKS --http-method POST --authorization-type NONE
+aws apigateway put-integration --rest-api-id $API --resource-id $TASKS --http-method POST \
+  --type AWS_PROXY --integration-http-method POST --uri $URI
+aws apigateway put-method --rest-api-id $API --resource-id $TASKS --http-method GET --authorization-type NONE
+aws apigateway put-integration --rest-api-id $API --resource-id $TASKS --http-method GET \
+  --type AWS_PROXY --integration-http-method POST --uri $URI
+aws apigateway put-method --rest-api-id $API --resource-id $ONE --http-method DELETE --authorization-type NONE
+aws apigateway put-integration --rest-api-id $API --resource-id $ONE --http-method DELETE \
+  --type AWS_PROXY --integration-http-method POST --uri $URI
+
+aws apigateway create-deployment --rest-api-id $API --stage-name dev
+aws lambda add-permission --function-name tasks-api --statement-id apigw \
+  --action lambda:InvokeFunction --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:eu-west-1:000000000000:$API/*/*/*"
+```
+
+চালাও:
+
+```sh
+URL=http://$API.execute-api.localhost.localstack.cloud:4566/dev
+
+curl -s -i -X POST "$URL/tasks" -H 'content-type: application/json' -d '{"title":"write lesson"}'
+echo; echo
+curl -s "$URL/tasks"; echo
+```
+<Output>
+```text
+# the id, the dates and some headers in your output differ; headers are trimmed
+HTTP/1.1 201 CREATED
+content-type: application/json
+Content-Length: 64
+
+{"userId": "ana", "taskId": "384730da", "title": "write lesson"}
+
+[{"taskId": "384730da", "title": "write lesson", "userId": "ana"}, ...]
+```
+</Output>
+
+এবার POST-এর উত্তর থেকে id নিয়ে দুবার মুছে ফেলো:
+
+```sh
+ID=384730da   # use the taskId from your own POST reply
+curl -s -o /dev/null -w "first delete: %{http_code}\n" -X DELETE "$URL/tasks/$ID"
+curl -s -o /dev/null -w "second delete: %{http_code}\n" -X DELETE "$URL/tasks/$ID"
+curl -s "$URL/tasks"; echo
+```
+  </Run>
+  <Verify>
+    - POST **২০১** ফেরত দেয়, সঙ্গে নতুন `taskId` সহ একটি body
+    - GET নতুন task-টি দেখায়, আর key-পাঠ থেকে `ana`-র আগের item-গুলোও
+    - দুটি delete-ই **২০৪** দেয়, আর পরের GET-এ task-টি নেই
+  </Verify>
+</Lab>
+
+<Lab title="handler যা কখনো দেখে না" time="~৩ মিনিট" collapsed>
+  <Predict>
+    তুমি `/tasks`-এ JSON নয় এমন body দিয়ে `POST` করলে। Handler সেটিতে `json.loads` চালায় আর exception তোলে। ক্লায়েন্ট কী পায়?
+
+    <Answer>
+      **502**, `Internal server error`। Exception মানে ফাংশন response নয়, একটি error ফেরত দিয়েছে, তাই API Gateway-র এগিয়ে দেওয়ার কিছু নেই। আসল কারণ ফাংশনের log group-এ, যেখানে দেখতে হয়।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+curl -s -w "  -> %{http_code}\n" -X POST "$URL/tasks" -H 'content-type: application/json' -d 'oops'
+aws logs tail /aws/lambda/tasks-api --since 2m --format short | grep -i error | head -3
+```
+  </Run>
+  <Verify>
+    - ক্লায়েন্ট শুধু সাধারণ বার্তাসহ একটি 502 দেখে
+    - Log group-এ exception (একটি JSON decode error) দেখা যায়, কারণ বিস্তারিত কখনো ক্লায়েন্টের কাছে যায় না
+  </Verify>
+</Lab>
+
+এটি ঠিকভাবে সামলানো মানে body যাচাই করে নিজেই কাজের বার্তাসহ `400` ফেরত দেওয়া; যাচাই না করলে ফল এই 502।
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws title="টেবিল ছোঁয়ার অনুমতি ফাংশনের লাগে">
+  রিয়েল AWS-এ ফাংশনের execution role-কে টেবিলে `dynamodb:PutItem`, `Query` ও `DeleteItem` অনুমতি দিতে হয়, নইলে প্রতিটি কল access error দিয়ে ব্যর্থ হয়। LocalStack এটি প্রয়োগ করে না, তাই ল্যাব এ ছাড়াই চলে। ঠিক ওই action-গুলো, ঠিক ওই টেবিলের ARN-এ দাও।
+</RealAws>
+
+<RealAws cost title="একসঙ্গে তিনটি মিটার চলে">
+  একটি অনুরোধের বিল করে API Gateway, Lambda (সময় ও memory) এবং DynamoDB (read ও write unit)। Query-র জায়গায় scan বসালে শুধু DynamoDB-র অংশ বাড়ে, আর এভাবেই সস্তা-দেখতে API-র বিল বেড়ে যায়।
+</RealAws>
+
+<Note title="একটি ফাংশন না অনেক">
+  Route প্রতি একটি ফাংশন প্রতিটিকে ছোট আর আলাদাভাবে টিউনযোগ্য রাখে, কিন্তু ডিপ্লয় করার জিনিস বাড়ে; পুরো API-র জন্য একটি ফাংশন সহজ, কিন্তু সবকিছু জুড়ে যায়। দুটোই চলে, আর event সবসময় বলে কোন route ডাকা হয়েছে।
+</Note>
+
+<Recap>
+
+- API Gateway route করে, Lambda সিদ্ধান্ত নেয়, DynamoDB জমা রাখে: তিনটি সার্ভিস, একটি অনুরোধ-পথ।
+- একটি handler event থেকে `httpMethod` ও `pathParameters` পড়ে অনেক route সামলাতে পারে।
+- Partition key দিয়ে `GET` দ্রুত থাকে; বারবার `DELETE` নিরীহ, কারণ কিছু না থাকা জিনিস মোছা ভুল নয়।
+- Exception হয়ে যায় 502, তাই input যাচাই করো আর নিজে সঠিক status দাও।
+
+</Recap>

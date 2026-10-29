@@ -1,0 +1,119 @@
+---
+title: EventBridge routing
+description: EventBridge event-কে route করে সে কী বলছে তা দেখে, কোন topic-এ পাঠানো হয়েছে তা দেখে নয়। একটি rule pattern হিসেবে লিখে দেখো তিনটি event-এর কোনটি পার পায়।
+time: ১০ মিনিট
+needs:
+  - SNS fan-out
+learn:
+  - Event bus, rule ও target কীভাবে মেলে
+  - Event pattern কীভাবে source, type ও detail-এর ভেতরের ফিল্ডে মেলায়
+  - কখন SNS-এর বদলে EventBridge বাছবে
+---
+
+## বিষয়বস্তু দেখে routing
+
+SNS ফিল্টার করে তোমার জোড়া attribute দেখে। **EventBridge** route করে event-এর নিজের বিষয়বস্তু দেখে। Producer একটি **event bus**-এ JSON event রাখে; bus-এর প্রতিটি **rule**-এ একটি **event pattern** থাকে; যে event মেলে সেটি যায় ওই rule-এর **target**-এ (একটি SQS queue, Lambda ফাংশন, SNS topic ও আরও অনেক কিছু)।
+
+অংশগুলো:
+
+- **Event bus**: যে চ্যানেলে event রাখা হয়। প্রতিটি account-এ একটি default bus আছে, আর নিজের বানাতেও পারো।
+- **Event**: `source` (কে পাঠাল), `detail-type` (কী ধরনের event) আর মুক্ত-গঠনের `detail` object সহ JSON।
+- **Rule**: একটি pattern আর এক বা একাধিক target। একটি event কয়েকটি rule-এর সঙ্গে মিলে তাদের সব target-এ যেতে পারে।
+- **Pattern**: event-এর আদলে একটি JSON। প্রতিটি ফিল্ড গ্রহণযোগ্য মানগুলো array হিসেবে লেখে, আর বাদ দেওয়া ফিল্ড সবকিছুর সঙ্গে মেলে।
+
+Pattern `detail`-এর ভেতরেও যেতে পারে, আর সংখ্যা তুলনা করে: `{"total": [{"numeric": [">", 100]}]}` শুধু ১০০-র বেশি total মেলায়।
+
+## বড় অর্ডার বেছে নেওয়া rule
+
+<Lab title="তিনটি event, একটি rule" time="~৬ মিনিট">
+  <Predict>
+    একটি rule মেলায় source `shop.orders`, detail-type `OrderPlaced` আর ১০০-র বেশি `total`। তুমি bus-এ তিনটি event রাখলে: ২৫০-র একটি অর্ডার, ২০-র একটি অর্ডার, আর `shop.users` থেকে একটি `UserCreated` event। rule-এর target queue-তে কয়টি পৌঁছায়?
+
+    <Answer>
+      **একটি**: ২৫০-র অর্ডার। ২০-র অর্ডার সংখ্যার পরীক্ষায় আটকায়, আর user event-এর source ও type ভুল। যে event কোনো rule-এর সঙ্গে মেলে না তা শুধু ফেলে দেওয়া হয়।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+TARGET_URL=$(aws sqs create-queue --queue-name ev-target --query QueueUrl --output text)
+TARGET_ARN=$(aws sqs get-queue-attributes --queue-url "$TARGET_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+
+aws events create-event-bus --name shop
+
+aws events put-rule --name big-orders --event-bus-name shop --event-pattern '{
+  "source": ["shop.orders"],
+  "detail-type": ["OrderPlaced"],
+  "detail": { "total": [{ "numeric": [">", 100] }] }
+}'
+
+aws events put-targets --event-bus-name shop --rule big-orders \
+  --targets "Id=1,Arn=$TARGET_ARN"
+```
+
+এবার bus-এ তিনটি event রাখো। `put-events` একটি list নেয়, আর `Detail` একটি JSON string:
+
+```sh
+aws events put-events --entries '[
+  {"EventBusName":"shop","Source":"shop.orders","DetailType":"OrderPlaced","Detail":"{\"orderId\":1,\"total\":250}"},
+  {"EventBusName":"shop","Source":"shop.orders","DetailType":"OrderPlaced","Detail":"{\"orderId\":2,\"total\":20}"},
+  {"EventBusName":"shop","Source":"shop.users","DetailType":"UserCreated","Detail":"{}"}
+]' --query FailedEntryCount
+
+aws sqs receive-message --queue-url "$TARGET_URL" --max-number-of-messages 10 --wait-time-seconds 3 \
+  --query 'Messages[].Body' --output text \
+  | python3 -c "
+import sys, json
+for text in sys.stdin.read().split('\t'):
+    if text.strip():
+        e = json.loads(text)
+        print(e['source'], e['detail-type'], e['detail'])"
+```
+<Output>
+```text
+0
+shop.orders OrderPlaced {'orderId': 1, 'total': 250}
+```
+</Output>
+  </Run>
+  <Verify>
+    - `FailedEntryCount` ০: bus তিনটি event-ই নিয়েছে
+    - ঠিক একটি event queue-তে পৌঁছাল, `total` ২৫০-র অর্ডারটি
+    - পৌঁছানো body পুরো event: তাতে `id`, `time`, `account` ও `region`-ও আছে
+  </Verify>
+</Lab>
+
+## SNS না EventBridge
+
+| | SNS | EventBridge |
+| --- | --- | --- |
+| মডেল | topic-এ publish | bus-এ event রাখা |
+| Routing | message attribute-এর ওপর filter policy | পুরো event-এর ওপর pattern, `detail`-এর ফিল্ডসহ |
+| Subscriber | topic-এর সবাই, ফিল্টার না থাকলে | প্রতিটি rule-এর pattern যা বাছে |
+| উপযোগী | এক ধরনের message অনেক consumer-কে broadcast | অনেক সার্ভিসের মধ্যে অনেক ধরনের event route করা |
+
+সাধারণ নিয়ম: একজন publisher এক ধরনের message broadcast করলে SNS, আর অনেক সার্ভিসের মধ্যে অনেক ধরনের event ঘুরলে এবং প্রতিটি consumer আলাদা অংশ চাইলে EventBridge।
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws title="Target-এর অনুমতি লাগে">
+  রিয়েল AWS-এ rule শুধু তখনই SQS queue-তে পাঠাতে পারে যখন queue-র policy `events.amazonaws.com`-কে পাঠাতে দেয়, আর Lambda ফাংশনে যখন তার resource policy দেয়। নইলে rule মেলে কিন্তু কিছুই পৌঁছায় না। LocalStack এটি প্রয়োগ করে না, তাই ল্যাব এ ছাড়াই চলে।
+</RealAws>
+
+<RealAws cost title="Event-এর বিল হয়">
+  Bus-এ রাখা custom event প্রতি মিলিয়নে চার্জ হয়, তাই বাচাল producer বিলে ধরা পড়ে। অন্য সার্ভিসের সাড়া দেওয়ার মতো জিনিস bus-এ রাখো, প্রতিটি অভ্যন্তরীণ খুঁটিনাটি নয়।
+</RealAws>
+
+<Note title="এখানেও delivery at-least-once">
+  EventBridge একটি event একাধিকবার target-এ দিতে পারে, আর ব্যর্থ target-কে কিছুক্ষণ retry করে। এই phase-এর সর্বত্র যেমন, তোমার consumer-রা idempotent থাকুক।
+</Note>
+
+<Recap>
+
+- Producer bus-এ event রাখে, আর মেলা pattern সহ প্রতিটি rule সেটি তার target-এ পাঠায়।
+- Pattern source, type ও `detail`-এর ভেতরের ফিল্ডে মেলায়, সংখ্যা তুলনাসহ; না-মেলা event ফেলে দেওয়া হয়।
+- এক ধরনের message broadcast করতে SNS, আর অনেক ধরনের event বিষয়বস্তু দেখে route করতে EventBridge।
+
+</Recap>

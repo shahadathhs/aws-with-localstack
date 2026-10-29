@@ -1,0 +1,190 @@
+---
+title: The execution model
+description: A Lambda function is a handler that lives in a sandbox the platform starts, reuses and throws away. Deploy one and watch it stay warm.
+time: 13 min
+needs:
+  - Running LocalStack with Docker Compose
+  - IAM principals, users and roles
+learn:
+  - Why a global variable survives between invocations, but not between instances
+  - How parallel calls turn into separate instances
+  - What the timeout does and why a failed call still returns 200
+---
+
+## A handler inside a sandbox
+
+You upload a zip containing a **handler**, a function that takes an `event` and a `context`. You never start a server. When a call arrives, the platform finds a sandbox that holds your code, runs the handler inside it, and keeps the sandbox around for a while in case another call follows.
+
+- **Cold start**: no sandbox is free, so the platform creates one, loads your code and runs your top-level code. That is the slow path.
+- **Warm start**: a sandbox already exists and is idle, so only the handler runs. Anything you stored in a global variable is still there.
+- **Concurrency**: each sandbox handles one call at a time. Ten calls at once need ten sandboxes, so the platform starts as many as it needs.
+
+The consequence: a global variable is a cache that may or may not be there. It is shared by calls that happen to reuse one sandbox and invisible to every other sandbox. Never keep anything in it that must be correct.
+
+| Setting | Default | Range |
+| --- | --- | --- |
+| Timeout | 3 seconds | up to 15 minutes |
+| Memory | 128 MB | 128 MB to 10,240 MB, and CPU grows with it |
+| Payload | | about 6 MB for a call that waits for the answer |
+
+## Deploy and invoke
+
+A function needs an **execution role**: the identity it runs as, which Lambda assumes on your behalf (see [IAM roles](/en/iam/01-principals-users-roles/)). LocalStack does not enforce what the role may do, but the role has to exist.
+
+<Lab title="a counter that survives" time="~5 min">
+  <Predict>
+    The handler below adds one to a global `count` on every call and returns it. You invoke it three times, a second apart. What do the three calls return?
+
+    <Answer>
+      **1, 2, 3.** The first call starts a sandbox and runs the top-level code, so `count` starts at 0. The next two calls reuse that sandbox, and `count` keeps going.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+mkdir -p /tmp/lam && cd /tmp/lam
+
+cat > handler.py <<'PY'
+import time
+
+started = time.time()
+count = 0
+
+
+def handler(event, context):
+    global count
+    count += 1
+    return {"count": count, "age": round(time.time() - started), "event": event}
+PY
+zip handler.zip handler.py
+
+aws iam create-role --role-name lambda-role --assume-role-policy-document '{
+  "Version": "2012-10-17",
+  "Statement": [{ "Effect": "Allow", "Principal": { "Service": "lambda.amazonaws.com" }, "Action": "sts:AssumeRole" }]
+}'
+
+aws lambda create-function --function-name counter --runtime python3.12 \
+  --handler handler.handler --zip-file fileb://handler.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name counter
+```
+
+`handler.handler` means file `handler.py`, function `handler`. Now call it three times:
+
+```sh
+for i in 1 2 3; do
+  aws lambda invoke --function-name counter --payload '{"hello":"world"}' \
+    --cli-binary-format raw-in-base64-out out.json --query StatusCode --output text
+  cat out.json; echo
+  sleep 1
+done
+```
+<Output>
+```text
+# the age value depends on your timing
+200
+{"count": 1, "age": 0, "event": {"hello": "world"}}
+200
+{"count": 2, "age": 1, "event": {"hello": "world"}}
+200
+{"count": 3, "age": 3, "event": {"hello": "world"}}
+```
+</Output>
+  </Run>
+  <Verify>
+    - `count` goes 1, 2, 3: the global variable survived because the same sandbox served all three calls
+    - `age` grows: the top-level code ran once, when the sandbox started
+    - `event` is exactly the JSON you passed with `--payload`
+  </Verify>
+</Lab>
+
+<Lab title="parallel calls, new instances" time="~3 min" collapsed>
+  <Predict>
+    You fire three invocations at the same moment, then change the function's memory setting and invoke once more. What happens to `count`?
+
+    <Answer>
+      The sandbox that was idle takes one of the three calls and carries on counting. The other two arrive while it is busy, so each gets a **new** sandbox, which starts at 1. Changing the configuration retires the old sandboxes, so the next call starts again at 1.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+for i in 1 2 3; do
+  ( aws lambda invoke --function-name counter --payload '{}' \
+      --cli-binary-format raw-in-base64-out par$i.json >/dev/null; cat par$i.json; echo ) &
+done; wait
+
+aws lambda update-function-configuration --function-name counter --memory-size 256
+aws lambda wait function-updated-v2 --function-name counter
+aws lambda invoke --function-name counter --payload '{}' \
+  --cli-binary-format raw-in-base64-out out.json >/dev/null; cat out.json
+```
+  </Run>
+  <Verify>
+    - Among the three parallel replies, one continues the old count and the others report `"count": 1` (the order they print in varies)
+    - After the memory change the count starts over at 1
+  </Verify>
+</Lab>
+
+<Lab title="the timeout" time="~3 min" collapsed>
+  <Predict>
+    A handler sleeps for 5 seconds, and the function keeps its default timeout. What does `invoke` report as the HTTP status code?
+
+    <Answer>
+      **200**, even though the call failed. The status code describes the invoke request itself. The failure is in the `FunctionError` field and in the body.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+cat > slow.py <<'PY'
+import time
+
+
+def handler(event, context):
+    time.sleep(5)
+    return "done"
+PY
+zip slow.zip slow.py
+aws lambda create-function --function-name slow --runtime python3.12 \
+  --handler slow.handler --zip-file fileb://slow.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name slow
+
+aws lambda invoke --function-name slow --cli-binary-format raw-in-base64-out out.json \
+  --query '[StatusCode,FunctionError]' --output text
+cat out.json
+```
+<Output>
+```text
+# the request id in your output differs
+200	Unhandled
+{"errorMessage":"RequestId: 4cd5d0fc-5108-4cc6-93c3-9a58e0d6de84 Error: Task timed out after 3.00 seconds","errorType":"Sandbox.Timedout"}
+```
+</Output>
+  </Run>
+  <Verify>
+    - The status code is 200 and `FunctionError` is `Unhandled`
+    - The body says `Task timed out after 3.00 seconds`
+  </Verify>
+</Lab>
+
+## What changes on real AWS
+
+<RealAws cost title="You pay for time and memory">
+  Billing is per request plus the duration multiplied by the memory you configured. More memory also means more CPU, so a bigger setting can finish sooner and cost the same or less. A function that sleeps is paid for while it sleeps.
+</RealAws>
+
+<Note title="Cold starts are not simulated faithfully">
+  LocalStack runs each function in a container on your machine, so the first call is slower, but its timings say nothing about real cold starts. Measure those on AWS.
+</Note>
+
+<Note title="Global state in real life">
+  Use globals for things that are expensive to build and safe to reuse, such as an SDK client or a database connection. Do not use them for counters or anything another instance would need to see.
+</Note>
+
+<Recap>
+
+- A function is a handler in a sandbox that the platform reuses while it is warm; a global variable lives and dies with that sandbox.
+- Concurrency means more sandboxes: parallel calls do not share globals.
+- A timeout fails the call but not the request, so check `FunctionError`, not only the status code.
+
+</Recap>

@@ -137,6 +137,7 @@ endpoint `http://localhost:4566`, the region from `.env` (default `eu-west-1`) a
 | `make logs` / `make status` | Tail the logs / show which services are available |
 | `make setup-cli` | One-time: write the `localstack` profile into `~/.aws` |
 | `make aws CMD='s3 ls'` | Run any AWS CLI command against LocalStack |
+| `make tf CMD='plan'` | Run Terraform (in Docker, nothing to install) against LocalStack |
 | `make demo` | Guided demo: S3 + SQS + DynamoDB |
 | `make clean` | Stop and **delete all data** |
 | `make site-dev` / `make site-build` / `make site-lint` | Work on the course site |
@@ -147,18 +148,18 @@ endpoint `http://localhost:4566`, the region from `.env` (default `eu-west-1`) a
 
 ## Curriculum
 
-Phases 0 and 1 are written. Later phases are planned and are written as the course grows.
+Phases 0 to 6 are written. Later phases are planned and are written as the course grows.
 
 | Phase | Topic | Status |
 | --- | --- | --- |
 | 0 | **Tooling**: Docker Compose, AWS CLI, profiles, how LocalStack routes requests | written |
 | 1 | **S3** (object model, versioning, storage classes, presigned URLs, security, events) and **IAM** (principals, policies, ARNs) | written |
-| 2 | **Lambda**: execution model, the event object, S3 and SQS triggers | next |
-| 3 | **API Gateway → Lambda → DynamoDB**: the serverless chain | planned |
-| 4 | **SQS, SNS, EventBridge**: messaging, retries, fan-out | planned |
-| 5 | **CloudWatch and Secrets Manager**: observability and config | planned |
-| 6 | **Terraform**: rebuild everything as code | planned |
-| 7 | **Real AWS** (free tier): graduate from the sandbox | planned |
+| 2 | **Lambda**: execution model, the event object, S3 and SQS triggers | written |
+| 3 | **API Gateway → Lambda → DynamoDB**: the serverless chain | written |
+| 4 | **SQS, SNS, EventBridge**: messaging, retries, fan-out | written |
+| 5 | **CloudWatch and Secrets Manager**: logs, metrics, alarms, config and secrets | written |
+| 6 | **Terraform**: desired state, drift, variables, remote state (runs in Docker, nothing to install) | written |
+| 7 | **Real AWS** (free tier): graduate from the sandbox | next |
 
 The full plan, with the concepts and experiments for each phase, is in
 [`learning-plan.md`](website/content/docs/en/learning-plan.md).
@@ -169,7 +170,7 @@ The full plan, with the concepts and experiments for each phase, is in
 | --- | --- |
 | [`website/`](website) | The bilingual course site (Next.js + Fumadocs) and every lesson in `content/docs/<lang>/<service>/` |
 | [`infra/`](infra) | `compose.yaml` and the one-time setup scripts for LocalStack |
-| [`labs/`](labs) | Runnable per-service experiments that go with the lessons (`make demo` lives here) |
+| [`labs/`](labs) | Runnable experiments that go with the lessons (`make demo` lives here, and the Terraform working directory) |
 | [`docs/`](docs) | Design principles, tokens and mockups for the site; the [lesson authoring guide](docs/lessons.md) |
 | [`.github/`](.github) | CI, issue and pull request templates, Dependabot |
 
@@ -183,6 +184,11 @@ The full plan, with the concepts and experiments for each phase, is in
 - **Persistence.** Resources are kept while the container lives. `make down` and `make up` loses them (persistence
   across restarts is a LocalStack Pro feature). `make clean` wipes everything.
 - **Region.** Change it in `.env` (`AWS_DEFAULT_REGION`), then run `make setup-cli` again if the profile exists.
+- **API Gateway and CloudWatch.** The course uses REST APIs, because HTTP APIs (`apigatewayv2`) are not in the
+  LocalStack license, and queries logs with Logs Insights, because CloudWatch Logs filter patterns are not applied.
+- **Terraform.** It runs from the official Docker image through Compose (`make tf CMD="plan"`), so nothing is installed. The
+  first run pulls the image and the AWS provider and needs a network connection. On LocalStack, creating or changing an
+  SQS queue through Terraform takes about 25 seconds.
 - **Presigned URLs.** LocalStack skips signature and expiry checks by default. The presigned URLs lesson explains
   how to turn them on with `S3_SKIP_SIGNATURE_VALIDATION=0`.
 

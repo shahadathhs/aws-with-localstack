@@ -8,7 +8,7 @@ export const websiteLd = {
   url: siteUrl,
   inLanguage: ['en', 'bn'],
   description:
-    'Learn AWS for free: run S3, SQS, DynamoDB, Lambda and IAM locally with Docker Compose and LocalStack, with step-by-step tutorials and a hands-on learning plan.',
+    'Learn AWS for free: run S3, IAM, Lambda, API Gateway, DynamoDB, SQS, SNS, EventBridge, CloudWatch, Secrets Manager and Terraform locally with Docker Compose and LocalStack, with step-by-step tutorials and a hands-on learning plan.',
   author: { '@type': 'Person', name: author.name, url: author.site },
 };
 

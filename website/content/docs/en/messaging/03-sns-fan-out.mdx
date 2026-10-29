@@ -1,0 +1,143 @@
+---
+title: SNS fan-out
+description: SQS delivers each message to one consumer. SNS delivers each message to every subscriber. Publish once and watch two queues receive it, then filter who gets what.
+time: 11 min
+needs:
+  - SQS delivery and visibility
+learn:
+  - How a topic copies one publish to every subscriber
+  - Why a queue behind each subscriber decouples them
+  - How a filter policy and raw delivery change what a subscriber receives
+---
+
+## One to many
+
+A queue is **point-to-point**: each message goes to one consumer, and the consumers share the work. A **topic** in SNS is **publish/subscribe**: each message goes to every subscriber, and each one gets its own copy.
+
+When an order is placed, billing, shipping and an email service all need to know. With a topic the order service publishes once and knows nothing about who listens. Adding a fourth listener changes no existing code.
+
+Putting an SQS queue between the topic and each worker is the standard shape:
+
+```text
+publisher --> topic --> queue --> billing worker
+                   \--> queue --> shipping worker
+```
+
+Each queue buffers its own backlog, so a slow or crashed worker does not hold up the others, and a failed message can use that queue's own dead-letter queue.
+
+## Publish once, receive twice
+
+<Lab title="two queues, one publish" time="~5 min">
+  <Predict>
+    A topic has two queue subscribers, `billing` and `shipping`. You publish one message. How many messages exist in total, and what does each queue's consumer see?
+
+    <Answer>
+      **Two**, one copy per queue. Each queue holds the same message and each consumer reads it independently. Deleting it from `billing` does not touch the copy in `shipping`.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+TOPIC_ARN=$(aws sns create-topic --name orders --query TopicArn --output text)
+
+BILLING_URL=$(aws sqs create-queue --queue-name billing --query QueueUrl --output text)
+BILLING_ARN=$(aws sqs get-queue-attributes --queue-url "$BILLING_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+SHIPPING_URL=$(aws sqs create-queue --queue-name shipping --query QueueUrl --output text)
+SHIPPING_ARN=$(aws sqs get-queue-attributes --queue-url "$SHIPPING_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+
+aws sns subscribe --topic-arn "$TOPIC_ARN" --protocol sqs \
+  --notification-endpoint "$BILLING_ARN" --attributes RawMessageDelivery=true
+aws sns subscribe --topic-arn "$TOPIC_ARN" --protocol sqs \
+  --notification-endpoint "$SHIPPING_ARN" --attributes RawMessageDelivery=true
+
+aws sns publish --topic-arn "$TOPIC_ARN" --message '{"orderId":1}'
+
+echo "billing:"
+aws sqs receive-message --queue-url "$BILLING_URL" --wait-time-seconds 2 \
+  --query 'Messages[0].Body' --output text
+echo "shipping:"
+aws sqs receive-message --queue-url "$SHIPPING_URL" --wait-time-seconds 2 \
+  --query 'Messages[0].Body' --output text
+```
+
+`RawMessageDelivery=true` delivers the message body exactly as published. Without it SNS wraps the message in an envelope, which the next lab shows.
+<Output>
+```text
+# the subscription ARNs printed by subscribe are left out
+billing:
+{"orderId":1}
+shipping:
+{"orderId":1}
+```
+</Output>
+  </Run>
+  <Verify>
+    - Both queues return `{"orderId":1}` for the single publish
+  </Verify>
+</Lab>
+
+## Filtering at the source
+
+By default every subscriber gets every message. A **filter policy** on the subscription makes SNS deliver only messages whose attributes match, so a subscriber does not have to receive and discard what it does not want.
+
+<Lab title="only messages for the EU" time="~5 min" collapsed>
+  <Predict>
+    A new subscriber has the filter policy `{"region": ["eu"]}` and no raw delivery. You publish one message with attribute `region=us` and one with `region=eu`. What arrives, and what does its body look like?
+
+    <Answer>
+      Only the **eu** message. Its body is not the bare text but a **JSON envelope** (`Type`, `MessageId`, `TopicArn`, `Message`, and more), because raw delivery is off. The real payload is in the `Message` field.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+EU_URL=$(aws sqs create-queue --queue-name eu-only --query QueueUrl --output text)
+EU_ARN=$(aws sqs get-queue-attributes --queue-url "$EU_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+aws sns subscribe --topic-arn "$TOPIC_ARN" --protocol sqs --notification-endpoint "$EU_ARN" \
+  --attributes '{"FilterPolicy":"{\"region\":[\"eu\"]}"}'
+
+aws sns publish --topic-arn "$TOPIC_ARN" --message us-msg \
+  --message-attributes '{"region":{"DataType":"String","StringValue":"us"}}'
+aws sns publish --topic-arn "$TOPIC_ARN" --message eu-msg \
+  --message-attributes '{"region":{"DataType":"String","StringValue":"eu"}}'
+
+aws sqs receive-message --queue-url "$EU_URL" --max-number-of-messages 10 --wait-time-seconds 2 \
+  --query 'Messages[].Body' --output text \
+  | python3 -c "import sys, json; b = json.loads(sys.stdin.read()); print(b['Type'], b['Message'])"
+```
+<Output>
+```text
+Notification eu-msg
+```
+</Output>
+  </Run>
+  <Verify>
+    - Exactly one message arrived, and it is `eu-msg`
+    - Its body is an envelope: `Type` is `Notification` and `Message` holds the text you published
+  </Verify>
+</Lab>
+
+## What changes on real AWS
+
+<RealAws title="Queue policy">
+  On real AWS the queue must have a policy that lets the topic send to it (`sqs:SendMessage` for the topic's ARN), or the subscription exists but nothing arrives. LocalStack does not enforce this, so the labs work without it.
+</RealAws>
+
+<RealAws cost title="Per publish and per delivery">
+  SNS charges for publishes, and for deliveries to some protocols. Fan-out to many subscribers multiplies deliveries, which is cheap for queues and adds up for SMS or email.
+</RealAws>
+
+<Note title="Subscribers see duplicates too">
+  SNS delivery is at-least-once, like SQS, so a subscriber can receive the same notification twice. The queue behind it does not change that, so each worker still has to be idempotent.
+</Note>
+
+<Recap>
+
+- A topic copies each published message to every subscriber; a queue gives it to one consumer.
+- A queue per subscriber decouples them: each buffers its own backlog and retries on its own.
+- A filter policy delivers only matching messages, and raw delivery removes the SNS envelope.
+
+</Recap>
