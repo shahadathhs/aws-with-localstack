@@ -58,7 +58,7 @@ URL="<paste the printed url>"
 curl -s "$URL"                 # -> hello
 ```
 
-Read the query parameters: `X-Amz-Algorithm=AWS4-HMAC-SHA256`, `X-Amz-Credential` (scope: date/region/service), `X-Amz-Date`, `X-Amz-Expires=300`, `X-Amz-Signature`. Then watch it die. LocalStack skips signature and expiry checks on presigned URLs by default, so first set `S3_SKIP_SIGNATURE_VALIDATION=0` in `.env` and run `make up` again (it recreates the container):
+Read the query parameters: `X-Amz-Algorithm=AWS4-HMAC-SHA256`, `X-Amz-Credential` (scope: date/region/service), `X-Amz-Date`, `X-Amz-Expires=300`, `X-Amz-Signature`. Then watch it die. LocalStack skips signature and expiry checks on presigned URLs by default, so first set `S3_SKIP_SIGNATURE_VALIDATION=0` in `.env` (copied from [`.env.example`](https://github.com/shahadathhs/aws-with-localstack/blob/main/.env.example)) and run `make up` again (it recreates the container):
 
 ```sh
 SHORT=$(aws s3 presign s3://ph1-bucket/docs/notes/today.txt --expires-in 5)

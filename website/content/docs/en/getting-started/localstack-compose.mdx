@@ -28,6 +28,18 @@ docker --version
 docker compose version
 ```
 
+## Get the repo
+
+Every command in this course runs from a clone of the repository, [shahadathhs/aws-with-localstack](https://github.com/shahadathhs/aws-with-localstack). It holds the compose file ([`infra/compose.yaml`](https://github.com/shahadathhs/aws-with-localstack/blob/main/infra/compose.yaml)), the [`Makefile`](https://github.com/shahadathhs/aws-with-localstack/blob/main/Makefile) behind `make up`, the [`.env.example`](https://github.com/shahadathhs/aws-with-localstack/blob/main/.env.example) you copy for your settings, and these lessons.
+
+```sh
+git clone https://github.com/shahadathhs/aws-with-localstack.git
+cd aws-with-localstack
+cp .env.example .env      # your local settings; it is git-ignored
+```
+
+Found a mistake, or want to add something? See [CONTRIBUTING.md](https://github.com/shahadathhs/aws-with-localstack/blob/main/CONTRIBUTING.md): issues and pull requests are welcome.
+
 ## The official example
 
 Straight from the [official docs](https://docs.localstack.cloud/aws/getting-started/installation/#docker-compose):
@@ -85,7 +97,7 @@ Everything else — required token (`${LOCALSTACK_AUTH_TOKEN:?}`), ports, `DEBUG
 
 ## Start, verify and stop
 
-Run these from the repo root. The `Makefile` wraps the compose commands for you:
+Run these from the root of your clone. The [`Makefile`](https://github.com/shahadathhs/aws-with-localstack/blob/main/Makefile) wraps the compose commands for you:
 
 ```sh
 make up        # start in the background (waits for the healthcheck)
@@ -119,6 +131,7 @@ docker compose --project-directory . -f infra/compose.yaml <command>
 
 <Recap>
 
+- Clone the [repository](https://github.com/shahadathhs/aws-with-localstack) first: the compose file, the `Makefile` and `.env.example` all live there.
 - One gateway port (`4566`) serves every service, bound to localhost only; the `docker.sock` mount is what makes Lambda work.
 - The compose file in `infra/` is the official example plus a pinned image and a healthcheck, and it needs `LOCALSTACK_AUTH_TOKEN` in `.env`.
 - Use `make up`, `make status`, `make logs`, `make down` and `make clean` from the repo root; `make clean` wipes your data.

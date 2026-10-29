@@ -28,6 +28,18 @@ docker --version
 docker compose version
 ```
 
+## রিপো নামিয়ে নাও
+
+এই কোর্সের প্রতিটি কমান্ড চলে রিপোজিটরির একটি ক্লোন থেকে: [shahadathhs/aws-with-localstack](https://github.com/shahadathhs/aws-with-localstack)। এতে আছে compose ফাইল ([`infra/compose.yaml`](https://github.com/shahadathhs/aws-with-localstack/blob/main/infra/compose.yaml)), `make up`-এর পেছনের [`Makefile`](https://github.com/shahadathhs/aws-with-localstack/blob/main/Makefile), সেটিংসের জন্য যে [`.env.example`](https://github.com/shahadathhs/aws-with-localstack/blob/main/.env.example) কপি করবে, আর এই লেসনগুলো।
+
+```sh
+git clone https://github.com/shahadathhs/aws-with-localstack.git
+cd aws-with-localstack
+cp .env.example .env      # তোমার লোকাল সেটিংস; এটি git-ignored
+```
+
+ভুল পেলে বা কিছু যোগ করতে চাইলে [CONTRIBUTING.md](https://github.com/shahadathhs/aws-with-localstack/blob/main/CONTRIBUTING.md) দেখো: issue ও pull request স্বাগত।
+
 ## অফিসিয়াল উদাহরণ
 
 সরাসরি [অফিসিয়াল ডক](https://docs.localstack.cloud/aws/getting-started/installation/#docker-compose) থেকে:
@@ -85,7 +97,7 @@ services:
 
 ## চালু, যাচাই ও বন্ধ
 
-এগুলো রিপোর রুট থেকে চালাও। `Makefile` compose কমান্ডগুলো তোমার জন্য মুড়ে রাখে:
+এগুলো তোমার ক্লোনের রুট থেকে চালাও। [`Makefile`](https://github.com/shahadathhs/aws-with-localstack/blob/main/Makefile) compose কমান্ডগুলো তোমার জন্য মুড়ে রাখে:
 
 ```sh
 make up        # ব্যাকগ্রাউন্ডে চালু (হেলথচেকের জন্য অপেক্ষা)
@@ -119,6 +131,7 @@ docker compose --project-directory . -f infra/compose.yaml <command>
 
 <Recap>
 
+- আগে [রিপোজিটরি](https://github.com/shahadathhs/aws-with-localstack) ক্লোন করো: compose ফাইল, `Makefile` আর `.env.example` সবই সেখানে।
 - একটি গেটওয়ে পোর্ট (`4566`) সব সার্ভিস সার্ভ করে, শুধু localhost-এ বাঁধা; `docker.sock` মাউন্টই Lambda চালায়।
 - `infra/`-র compose ফাইল = অফিসিয়াল উদাহরণ + পিন করা ইমেজ + হেলথচেক, আর `.env`-এ `LOCALSTACK_AUTH_TOKEN` লাগে।
 - রিপোর রুট থেকে `make up`, `make status`, `make logs`, `make down`, `make clean` ব্যবহার করো; `make clean` তোমার ডেটা মুছে দেয়।

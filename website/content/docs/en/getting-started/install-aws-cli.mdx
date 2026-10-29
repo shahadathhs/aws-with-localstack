@@ -111,7 +111,7 @@ Uninstall instructions: [https://docs.aws.amazon.com/cli/latest/userguide/uninst
 
 ## Next step: point it at LocalStack
 
-No extra tooling needed — the AWS CLI supports LocalStack through a plain profile (`--endpoint-url` in `~/.aws/config`). See the official guide: [https://docs.localstack.cloud/aws/connecting/aws-cli/#configuring-a-custom-profile](https://docs.localstack.cloud/aws/connecting/aws-cli/#configuring-a-custom-profile) — or in this repo, just run:
+No extra tooling needed — the AWS CLI supports LocalStack through a plain profile (`--endpoint-url` in `~/.aws/config`). See the official guide: [https://docs.localstack.cloud/aws/connecting/aws-cli/#configuring-a-custom-profile](https://docs.localstack.cloud/aws/connecting/aws-cli/#configuring-a-custom-profile) — or, from a clone of [the repo](https://github.com/shahadathhs/aws-with-localstack) (see the [setup guide](/en/getting-started/localstack-compose/)), run (a [short script](https://github.com/shahadathhs/aws-with-localstack/blob/main/infra/scripts/setup-aws-profile.sh) writes the profile):
 
 ```sh
 make setup-cli      # writes the 'localstack' profile into ~/.aws

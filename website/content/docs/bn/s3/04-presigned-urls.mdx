@@ -58,7 +58,7 @@ URL="<ছাপানো url বসাও>"
 curl -s "$URL"                 # -> hello
 ```
 
-Query parameter পড়ো: `X-Amz-Algorithm=AWS4-HMAC-SHA256`, `X-Amz-Credential` (scope: date/region/service), `X-Amz-Date`, `X-Amz-Expires=300`, `X-Amz-Signature`। এবার মৃত্যু দেখো। LocalStack ডিফল্টে presigned URL-এর signature ও expiry যাচাই বাদ দেয়, তাই আগে `.env`-এ `S3_SKIP_SIGNATURE_VALIDATION=0` দিয়ে আবার `make up` চালাও (এতে container নতুন করে তৈরি হয়):
+Query parameter পড়ো: `X-Amz-Algorithm=AWS4-HMAC-SHA256`, `X-Amz-Credential` (scope: date/region/service), `X-Amz-Date`, `X-Amz-Expires=300`, `X-Amz-Signature`। এবার মৃত্যু দেখো। LocalStack ডিফল্টে presigned URL-এর signature ও expiry যাচাই বাদ দেয়, তাই আগে `.env`-এ ([`.env.example`](https://github.com/shahadathhs/aws-with-localstack/blob/main/.env.example) থেকে কপি করা) `S3_SKIP_SIGNATURE_VALIDATION=0` দিয়ে আবার `make up` চালাও (এতে container নতুন করে তৈরি হয়):
 
 ```sh
 SHORT=$(aws s3 presign s3://ph1-bucket/docs/notes/today.txt --expires-in 5)

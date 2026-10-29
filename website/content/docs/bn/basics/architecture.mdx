@@ -40,7 +40,7 @@ $ aws --profile localstack s3 ls
 4. Lambda: docker.sock দিয়ে sibling container-এ তোমার ফাংশন চালায়
 ```
 
-সব state কন্টেইনার মেমরিতে থাকে (`make clean`-এ মুছে যায়)।
+সব state কন্টেইনার মেমরিতে থাকে ([`make clean`](https://github.com/shahadathhs/aws-with-localstack/blob/main/Makefile)-এ মুছে যায়)।
 
 ## নকল অ্যাকাউন্ট ও region
 
@@ -76,7 +76,7 @@ $ aws --profile localstack s3 ls
 ## State ও জীবনকাল
 
 - Bucket, queue, table... কন্টেইনার **মেমরিতে** থাকে — `make restart`-এ টিকে, container মরলে মরে, `make clean` সব মুছে দেয়
-- সম্পূর্ণ রিস্টার্ট জুড়ে persistence হলো Pro ফিচার (`PERSISTENCE` env — এই রিপোর compose-এ ডিফল্ট `0`, ফ্রি টিয়ারে নিষ্ক্রিয়)
+- সম্পূর্ণ রিস্টার্ট জুড়ে persistence হলো Pro ফিচার (`PERSISTENCE` env — এই রিপোর [compose ফাইলে](https://github.com/shahadathhs/aws-with-localstack/blob/main/infra/compose.yaml) ডিফল্ট `0`, ফ্রি টিয়ারে নিষ্ক্রিয়)
 
 <Note title="LocalStack-এ">
   `make clean` container বন্ধ করে সব ডেটা মুছে দেয়। এরপর bucket, queue ও table আবার বানাতে হবে।

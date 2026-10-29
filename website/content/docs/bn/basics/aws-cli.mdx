@@ -23,7 +23,7 @@ learn:
 | `~/.aws/config`      | region, output format, `endpoint_url`, ...   | **কোথায়/কীভাবে** কথা বলবে — secret নয় |
 | `~/.aws/credentials` | `aws_access_key_id`, `aws_secret_access_key` | **তুমি কে** — secret                    |
 
-এই রিপোর `make setup-cli` দুটিতেই একটি `localstack` profile যোগ করে:
+এই রিপোর [`make setup-cli`](https://github.com/shahadathhs/aws-with-localstack/blob/main/infra/scripts/setup-aws-profile.sh) দুটিতেই একটি `localstack` profile যোগ করে:
 
 ```ini
 # ~/.aws/config
@@ -66,7 +66,7 @@ aws s3 ls                          # এখন localstack ব্যবহার 
 
 <Figure caption="CLI কীভাবে একটি সেটিং বেছে নেয়"><ResolutionLadder /></Figure>
 
-`make aws CMD='s3 ls'` কেন কাজ করে: এটি চালায় `AWS_PROFILE=localstack aws s3 ls` — স্তর ২ profile বেছে নেয়, স্তর ৩ region + endpoint দেয়।
+[`make aws CMD='s3 ls'`](https://github.com/shahadathhs/aws-with-localstack/blob/main/Makefile) কেন কাজ করে: এটি চালায় `AWS_PROFILE=localstack aws s3 ls` — স্তর ২ profile বেছে নেয়, স্তর ৩ region + endpoint দেয়।
 
 ## একটি কমান্ডের জীবন
 
