@@ -15,7 +15,7 @@ updates:
     groups:
       site-dev-tooling:
         dependency-type: development
-  - package-ecosystem: docker
+  - package-ecosystem: docker-compose
     directory: /infra
     schedule:
       interval: weekly
