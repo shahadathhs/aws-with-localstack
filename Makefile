@@ -1,6 +1,6 @@
 COMPOSE := docker compose --project-directory . -f infra/compose.yaml
 
-.PHONY: help up down restart logs status setup-cli aws demo clean site-install site-dev site-build site-lint screenshots
+.PHONY: help up down restart logs status setup-cli aws tf demo clean site-install site-dev site-build site-lint screenshots
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -26,6 +26,9 @@ setup-cli: ## Create the 'localstack' AWS CLI profile in ~/.aws (one-time)
 
 aws: ## Run an AWS CLI command against LocalStack, e.g. make aws CMD="s3 ls"
 	@AWS_PROFILE=localstack aws $(CMD)
+
+tf: ## Run Terraform (in Docker) against LocalStack, e.g. make tf CMD="plan"
+	$(COMPOSE) run --rm terraform $(CMD)
 
 demo: ## Run a guided S3 + SQS + DynamoDB demo
 	./labs/quickstart/demo.sh

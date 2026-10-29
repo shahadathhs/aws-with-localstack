@@ -70,10 +70,11 @@ LocalStack does not apply CloudWatch Logs filter patterns or metric filters in t
 
 ## Phase 6 — Infrastructure as Code: Terraform
 
-- Declarative vs imperative: desired state vs actual state; the state file; plan/apply; drift
-- Providers, resources, variables, outputs, remote state
+23. [Desired state](/en/terraform/01-desired-state/) — declarative vs imperative; providers and resources; init, plan, apply
+24. [State and drift](/en/terraform/02-state-and-drift/) — the state file; detecting hand-made changes; destroy and rebuild
+25. [Variables and remote state](/en/terraform/03-variables-and-remote-state/) — variables and outputs; forces replacement; the S3 backend
 
-Experiments: recreate the Phase-3 API with `tflocal`; mutate LocalStack by hand and watch `terraform plan` detect the drift; `destroy` then rebuild in 60 seconds.
+Terraform runs in Docker through Compose (`make tf CMD="plan"`), so there is nothing to install. Experiments: build a bucket, queue and table from one file; mutate LocalStack by hand and watch `terraform plan` detect the drift; destroy, then rebuild from the files; move the state into S3.
 
 ## Phase 7 — Graduation: real AWS (free tier)
 

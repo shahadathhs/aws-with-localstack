@@ -70,10 +70,11 @@ IAM:
 
 ## Phase 6 — Infrastructure as Code: Terraform
 
-- Declarative বনাম imperative: desired state বনাম actual state; state file; plan/apply; drift
-- Provider, resource, variable, output, remote state
+23. [Desired state](/bn/terraform/01-desired-state/) — declarative বনাম imperative; provider ও resource; init, plan, apply
+24. [State ও drift](/bn/terraform/02-state-and-drift/) — state ফাইল; হাতে করা বদল ধরা; destroy ও rebuild
+25. [Variable ও remote state](/bn/terraform/03-variables-and-remote-state/) — variable ও output; forces replacement; S3 backend
 
-এক্সপেরিমেন্ট: `tflocal` দিয়ে Phase-3 API পুনর্নির্মাণ; LocalStack-এ হাতে পরিবর্তন করে `terraform plan`-এ drift দেখা; `destroy` করে ৬০ সেকেন্ডে পুনর্গঠন।
+Terraform Compose দিয়ে Docker-এ চলে (`make tf CMD="plan"`), তাই কিছু install করতে হয় না। এক্সপেরিমেন্ট: একটি ফাইল থেকে bucket, queue ও table বানানো; হাতে LocalStack বদলে `terraform plan`-এ drift ধরা দেখা; destroy করে ফাইল থেকে আবার বানানো; state S3-তে সরানো।
 
 ## Phase 7 — গ্র্যাজুয়েশন: রিয়েল AWS (free tier)
 

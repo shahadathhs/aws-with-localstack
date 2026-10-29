@@ -1,0 +1,210 @@
+---
+title: Desired state
+description: Terraform-এ তুমি বর্ণনা করো কী থাকা উচিত, আর কী বানাতে, বদলাতে বা মুছতে হবে তা সে নিজে বের করে। LocalStack-এর বিরুদ্ধে Docker-এ চালাও, কিছু install না করেই।
+time: ১৩ মিনিট
+needs:
+  - Docker Compose দিয়ে LocalStack চালানো
+  - DynamoDB key দিয়েই দ্রুত
+learn:
+  - ধাপ স্ক্রিপ্ট করার সঙ্গে ফলাফল ঘোষণার তফাত
+  - init, plan ও apply প্রতিটি কী করে
+  - একই কনফিগারেশন দুবার চালালে কেন কিছু বদলায় না
+---
+
+## ধাপ নয়, ফলাফল ঘোষণা করো
+
+এখন পর্যন্ত প্রতিটি ল্যাব ছিল **imperative**: ক্রমে চালানো কমান্ডের তালিকা। স্ক্রিপ্ট দুবার চালালে দ্বিতীয়বার `create-bucket` ব্যর্থ হয়, বা আরও খারাপ, একটি duplicate বানায়। কী করা হয়ে গেছে তা কাউকে মনে রাখতে হয়।
+
+Terraform **declarative**। তুমি লেখো **desired state**, এমন ফাইল যা বলে "`tf-notes` নামে একটি bucket আছে, আর এই queue-ও আছে"। যা সত্যিই আছে তার সঙ্গে Terraform সেটি তুলনা করে আর ধাপগুলো নিজে বের করে। অংশগুলো:
+
+- **Provider**: একটি প্ল্যাটফর্মের API চেনা plugin। `aws` provider তোমার বর্ণনাকে AWS API কলে বদলায়।
+- **Resource**: একটি জিনিস যা থাকা উচিত, যেমন `aws_s3_bucket`। তার একটি type, একটি স্থানীয় নাম (`notes`) আর argument থাকে।
+- **State**: একটি ফাইল যেখানে Terraform লিখে রাখে কোন resource-এর জন্য কোন আসল object বানিয়েছে। এভাবেই সে জানে `aws_s3_bucket.notes` মানে bucket `tf-notes`।
+
+আর তিনটি কমান্ড যা তুমি বারবার ব্যবহার করবে:
+
+| কমান্ড | কী করে |
+| --- | --- |
+| `init` | কনফিগারেশনের দরকারি provider ডাউনলোড করে |
+| `plan` | ফাইল, state ও বাস্তবতা তুলনা করে কী *করত* তা ছাপে; কিছুই বদলায় না |
+| `apply` | সেটি করে |
+
+## Terraform install না করেই
+
+এই কোর্স Terraform চালায় অফিসিয়াল Docker image থেকে Compose দিয়ে, তাই কিছু install করতে হয় না। `make tf CMD="..."` `labs/terraform/` ফোল্ডারে LocalStack-এর বিরুদ্ধে `terraform ...` চালায়। Terraform LocalStack-কে ধরে Compose-এর নামে, `http://localstack:4566`। প্রথম রান image আর AWS provider টানে, তাই নেটওয়ার্ক লাগে আর এক মিনিটের মতো সময় যায়।
+
+<Note title="Provider ব্লকই LocalStack-এর অংশ">
+  Provider-এর `endpoints` ও `skip_...` লাইনগুলো তাকে LocalStack-এর সঙ্গে কথা বলতে আর আসল account লাগে এমন যাচাই এড়াতে বলে। আসল AWS-এ সেগুলো মুছে দাও, ফাইলের বাকিটা একই থাকে।
+</Note>
+
+## প্রথম কনফিগারেশন
+
+<Lab title="একটি ফাইল থেকে তিনটি resource" time="~৮ মিনিট">
+  <Predict>
+    একটি ফাইলে একটি bucket, একটি queue ও একটি DynamoDB table ঘোষণা করা, যেগুলোর কোনোটিই নেই। `plan` কী জানায়? `apply`-এর পর দ্বিতীয় `plan` কী জানায়?
+
+    <Answer>
+      প্রথম plan বলে **৩টি যোগ, ০টি বদল, ০টি মোছা**। `apply`-এর পর দ্বিতীয়টি বলে **No changes**: আসল জগৎ আগেই ফাইলের সঙ্গে মেলে, তাই করার কিছু নেই। এ কারণেই `apply` বারবার চালানো নিরাপদ।
+    </Answer>
+  </Predict>
+  <Run>
+এগুলো repository-র root থেকে চালাও, LocalStack চালু রেখে (`make up`)। আগে কনফিগারেশন লেখো:
+
+```sh
+cat > labs/terraform/main.tf <<'EOF'
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region                      = "eu-west-1"
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = true
+  s3_use_path_style           = true
+
+  endpoints {
+    s3       = "http://localstack:4566"
+    sqs      = "http://localstack:4566"
+    dynamodb = "http://localstack:4566"
+  }
+}
+
+resource "aws_s3_bucket" "notes" {
+  bucket = "tf-notes"
+}
+
+resource "aws_sqs_queue" "jobs" {
+  name                       = "tf-jobs"
+  visibility_timeout_seconds = 30
+}
+
+resource "aws_dynamodb_table" "tasks" {
+  name         = "tf-tasks"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+}
+EOF
+```
+
+Provider ডাউনলোড করো, তারপর জিজ্ঞেস করো Terraform কী করত:
+
+```sh
+make tf CMD="init -no-color"
+make tf CMD="plan -no-color"
+```
+<Output>
+```text
+# trimmed to the lines that matter
+- Installed hashicorp/aws v5.100.0 (signed by HashiCorp)
+Terraform has been successfully initialized!
+...
+Plan: 3 to add, 0 to change, 0 to destroy.
+```
+</Output>
+
+`-no-color` শুধু এই পাতা পাঠযোগ্য রাখে; নিজের টার্মিনালে বাদ দাও। এবার সেটি করো, আর AWS CLI দিয়ে দেখো object-গুলো আছে:
+
+```sh
+make tf CMD="apply -auto-approve -no-color"
+
+export AWS_PROFILE=localstack
+aws s3 ls | grep tf-
+aws sqs list-queues --query 'QueueUrls' --output text
+aws dynamodb list-tables --query TableNames --output text
+```
+<Output>
+```text
+# trimmed; the queue takes about half a minute to create here
+Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
+2026-10-29 11:58:20 tf-notes
+http://sqs.eu-west-1.localhost.localstack.cloud:4566/000000000000/tf-jobs
+tf-tasks
+```
+</Output>
+
+আবার `plan` চালাও:
+
+```sh
+make tf CMD="plan -no-color"
+```
+<Output>
+```text
+No changes. Your infrastructure matches the configuration.
+```
+</Output>
+  </Run>
+  <Verify>
+    - প্রথম plan শেষ হয় `Plan: 3 to add, 0 to change, 0 to destroy.` দিয়ে
+    - AWS CLI `tf-notes`, `tf-jobs` ও `tf-tasks` দেখায়
+    - দ্বিতীয় plan বলে `No changes`
+  </Verify>
+</Lab>
+
+<Lab title="queue নয়, ফাইল সম্পাদনা করো" time="~৪ মিনিট" collapsed>
+  <Predict>
+    তুমি ফাইলে `visibility_timeout_seconds` ৩০ থেকে ৬০ করে `plan` চালালে। Terraform কি queue মুছে আবার বানাবে, না আপডেট করবে?
+
+    <Answer>
+      **In-place আপডেট**: `Plan: 0 to add, 1 to change, 0 to destroy`, সঙ্গে একটি লাইন `visibility_timeout_seconds = 30 -> 60`। Terraform জানে চালু queue-তে এই argument বদলানো যায়। কিছু argument যায় না, আর সেগুলোর জন্য সে resource-টিই প্রতিস্থাপন করে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+sed -i.bak 's/visibility_timeout_seconds = 30/visibility_timeout_seconds = 60/' labs/terraform/main.tf
+make tf CMD="plan -no-color"
+make tf CMD="apply -auto-approve -no-color"
+```
+<Output>
+```text
+# trimmed
+~ visibility_timeout_seconds        = 30 -> 60
+Plan: 0 to add, 1 to change, 0 to destroy.
+Apply complete! Resources: 0 added, 1 changed, 0 destroyed.
+```
+</Output>
+
+এটি আবার ৩০ করে দাও, যাতে পরের পাঠগুলো একই ফাইল থেকে শুরু হয়:
+
+```sh
+sed -i.bak 's/visibility_timeout_seconds = 60/visibility_timeout_seconds = 30/' labs/terraform/main.tf
+make tf CMD="apply -auto-approve -no-color"
+```
+  </Run>
+  <Verify>
+    - Plan একটি বদল দেখায়, in-place আপডেট, destroy নয়
+    - আগের অবস্থায় ফেরানোর আগে `tf-jobs`-এ `aws sqs get-queue-attributes` `VisibilityTimeout` ৬০ জানায়
+  </Verify>
+</Lab>
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws title="LocalStack-এর লাইনগুলো সরাও">
+  `endpoints` ব্লক আর `skip_...` ও `s3_use_path_style` লাইনগুলো মুছে দাও, আর Terraform-কে স্বাভাবিক উপায়ে (একটি profile বা environment variable) আসল credential দাও। Resource-গুলো একই থাকে। তখন bucket-এর নাম পুরো AWS জুড়ে অনন্য হতে হবে, তাই `tf-notes` সম্ভবত আগেই নেওয়া।
+</RealAws>
+
+<RealAws cost title="Apply আসল, বিলযোগ্য জিনিস বানায়">
+  আসল AWS-এ `apply` এমন resource বানায় যা থাকা পর্যন্ত টাকা খায়। প্রতিবার plan পড়ো, আর যা দরকার নেই তা `destroy` করো।
+</RealAws>
+
+<Note title="plan হলো নিরাপত্তা-জাল">
+  "১টি বদল" আশা করে "১টি মুছে ফেলা" দেখলে সেটাই থামার মুহূর্ত। দলগুলো প্রায়ই apply-এর আগে কাউকে plan পড়তে বাধ্য করে।
+</Note>
+
+<Recap>
+
+- Terraform declarative: তুমি শেষ অবস্থা বর্ণনা করো, আর সে ধাপগুলো হিসাব করে।
+- `init` provider আনে, `plan` কিছু না বদলে পার্থক্য দেখায়, `apply` সেটি করে।
+- State যেহেতু মনে রাখে কী আছে, `apply` দুবার চালালে দ্বিতীয়বার কিছুই হয় না।
+
+</Recap>

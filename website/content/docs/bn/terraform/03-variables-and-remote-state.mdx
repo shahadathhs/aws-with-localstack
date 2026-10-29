@@ -1,0 +1,223 @@
+---
+title: Variable ও remote state
+description: Variable আর output দিয়ে কনফিগারেশন পুনর্ব্যবহারযোগ্য করো, দেখো নাম বদলানো কেন মানে প্রতিস্থাপন, আর state ফাইল এমন bucket-এ সরাও যেখানে দল ভাগ করতে পারে।
+time: ১৩ মিনিট
+needs:
+  - State ও drift
+learn:
+  - Variable ও output কীভাবে কনফিগারেশন পুনর্ব্যবহারযোগ্য করে
+  - কোন বদলে resource আপডেট হয় আর কোনটিতে প্রতিস্থাপিত হয়
+  - State কেন remote backend-এ থাকে, আর কীভাবে সরাবে
+---
+
+## Variable ও output
+
+হার্ড-কোড করা নামের কনফিগারেশন একবারই ব্যবহার করা যায়। **Variable** তার input, আর **output** যা সে ফেরত জানায়।
+
+- `variable "prefix" { ... }` একটি type আর ঐচ্ছিক default সহ input ঘোষণা করে। `var.prefix` হিসেবে ব্যবহার করো, আর string-এর ভেতরে `"${var.prefix}-notes"`।
+- মান দাও `-var prefix=dev`, একটি `terraform.tfvars` ফাইল, বা `TF_VAR_prefix` নামের environment variable দিয়ে।
+- `output "bucket_arn" { value = ... }` `apply`-এর পর একটি মান ছাপে আর `terraform output`-এর জন্য রাখে। অন্য টুল ও অন্য Terraform কনফিগারেশন output পড়ে।
+
+## নাম বদলানো মানে প্রতিস্থাপন
+
+কিছু argument চালু resource-এ বদলানো যায় না। Bucket-এর নাম তার একটি। নাম বদলালে Terraform **পুরোনো resource মুছে নতুনটি বানানোর** পরিকল্পনা করে। Plan তাতে `forces replacement` লিখে দেয়। নাম বদলে ডেটাবেস মুছে না ফেলার উপায় হলো plan-এ ওই শব্দ খোঁজা।
+
+<Lab title="যে prefix সবকিছুর নাম বদলায়" time="~৬ মিনিট">
+  <Predict>
+    তুমি কনফিগারেশন বদলাও যাতে প্রতিটি নাম `${var.prefix}` দিয়ে শুরু হয়, default `tf` (নাম একই থাকে)। তারপর `-var prefix=dev` দিয়ে plan করলে। প্রথম plan কী বলে, আর দ্বিতীয়টি?
+
+    <Answer>
+      প্রথমটি, default `tf` দিয়ে: **কোনো resource বদলায় না**, শুধু এইমাত্র যোগ করা দুটি output-এর জন্য `Changes to Outputs`। নামগুলো অভিন্ন, তাই variable-এ রিফ্যাক্টর করলে আসলে কিছু বদলায় না। দ্বিতীয়টি, `dev` দিয়ে: **৩টি যোগ, ০টি বদল, ৩টি মোছা**, প্রতিটিতে `forces replacement`, কারণ তিনটি নামই বদলায়।
+    </Answer>
+  </Predict>
+  <Run>
+এই ল্যাব `tf-notes`, `tf-jobs` ও `tf-tasks` apply করা অবস্থা থেকে চলে। ফাইল নতুন করে লেখো যাতে নাম variable থেকে আসে, আর দুটি output যোগ করো:
+
+```sh
+cat > labs/terraform/main.tf <<'EOF'
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region                      = "eu-west-1"
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = true
+  s3_use_path_style           = true
+
+  endpoints {
+    s3       = "http://localstack:4566"
+    sqs      = "http://localstack:4566"
+    dynamodb = "http://localstack:4566"
+  }
+}
+
+variable "prefix" {
+  type        = string
+  description = "Prepended to every resource name"
+  default     = "tf"
+}
+
+resource "aws_s3_bucket" "notes" {
+  bucket = "${var.prefix}-notes"
+}
+
+resource "aws_sqs_queue" "jobs" {
+  name                       = "${var.prefix}-jobs"
+  visibility_timeout_seconds = 30
+}
+
+resource "aws_dynamodb_table" "tasks" {
+  name         = "${var.prefix}-tasks"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+
+  attribute {
+    name = "id"
+    type = "S"
+  }
+}
+
+output "bucket_arn" {
+  value = aws_s3_bucket.notes.arn
+}
+
+output "queue_url" {
+  value = aws_sqs_queue.jobs.url
+}
+EOF
+```
+
+Default দিয়ে plan করো, তারপর অন্য prefix দিয়ে। কোনোটিই apply করা হচ্ছে না, তাই এখনো কিছু বদলায় না:
+
+```sh
+echo "default prefix:"
+make tf CMD="plan -no-color" | grep -E "Changes to Outputs|No changes|Plan:|will be"
+echo "prefix dev:"
+make tf CMD="plan -no-color -var prefix=dev" | grep -E "No changes|Plan:|forces replacement"
+```
+<Output>
+```text
+default prefix:
+Changes to Outputs:
+prefix dev:
+      ~ name                        = "tf-tasks" -> "dev-tasks" # forces replacement
+      ~ bucket                      = "tf-notes" -> "dev-notes" # forces replacement
+      ~ name                              = "tf-jobs" -> "dev-jobs" # forces replacement
+Plan: 3 to add, 0 to change, 3 to destroy.
+```
+</Output>
+
+Default দিয়ে একবার apply করো যাতে output রেকর্ড হয়, আর সেগুলো ফিরে পড়ো:
+
+```sh
+make tf CMD="apply -auto-approve -no-color"
+make tf CMD="output -no-color bucket_arn"
+```
+<Output>
+```text
+# the apply recorded two new outputs and changed nothing else
+Apply complete! Resources: 0 added, 0 changed, 0 destroyed.
+"arn:aws:s3:::tf-notes"
+```
+</Output>
+  </Run>
+  <Verify>
+    - Default plan কোনো resource বদলায় না (শুধু output নতুন)
+    - `dev` plan তিনটি নামেই `forces replacement` লেখে আর শেষ হয় `3 to add, 0 to change, 3 to destroy` দিয়ে
+    - `output bucket_arn` bucket-এর ARN ছাপে
+  </Verify>
+</Lab>
+
+## State-এর জায়গা ভাগ করা
+
+এখন পর্যন্ত state তোমার মেশিনের একটি ফাইলে। দুজন দুই ল্যাপটপ থেকে Terraform চালালে প্রত্যেকের নিজের কপি থাকে, আর দ্বিতীয় `apply` জানে না প্রথমজন কী করেছে। **Remote backend** ভাগ করা storage-এ একটি কপি রাখে। `s3` backend সেটি একটি bucket-এ রাখে।
+
+<Lab title="State S3-তে সরাও" time="~৫ মিনিট">
+  <Predict>
+    তুমি `tf-state` নামে একটি bucket বানালে, একটি `backend "s3"` ব্লক যোগ করলে, আর `init -migrate-state` চালালে। পরে state কোথায়, আর `plan` কি এখনো কোনো বদল জানায় না?
+
+    <Answer>
+      State হলো `tf-state` bucket-এর `notes/terraform.tfstate` object, আর `plan` এখনো জানায় **No changes**: এটি একই state, এখন S3 থেকে পড়া। Resource সরেনি, সরেছে শুধু তাদের রেকর্ড।
+    </Answer>
+  </Predict>
+  <Run>
+Terraform ব্যবহার করার আগে state bucket থাকতে হয়, তাই এটি কনফিগারেশনের বাইরে বানাও, আর backend যোগ করো:
+
+```sh
+export AWS_PROFILE=localstack
+aws s3 mb s3://tf-state
+
+python3 - <<'PY'
+path = "labs/terraform/main.tf"
+text = open(path).read()
+backend = '''terraform {
+  backend "s3" {
+    bucket                      = "tf-state"
+    key                         = "notes/terraform.tfstate"
+    region                      = "eu-west-1"
+    use_path_style              = true
+    skip_credentials_validation = true
+    skip_metadata_api_check     = true
+    skip_requesting_account_id  = true
+    endpoints = {
+      s3 = "http://localstack:4566"
+    }
+  }
+
+'''
+open(path, "w").write(text.replace("terraform {\n", backend, 1))
+PY
+
+make tf CMD="init -migrate-state -force-copy -no-color"
+aws s3 ls s3://tf-state/notes/
+make tf CMD="plan -no-color"
+```
+<Output>
+```text
+# trimmed
+Successfully configured the backend "s3"! Terraform will automatically
+2026-10-29 12:00:57       6413 terraform.tfstate
+No changes. Your infrastructure matches the configuration.
+```
+</Output>
+  </Run>
+  <Verify>
+    - `s3` backend কনফিগার হয়েছে, আর `tf-state`-এ `notes/terraform.tfstate` আছে
+    - Plan এখনো কোনো বদল জানায় না
+  </Verify>
+</Lab>
+
+কাজ শেষে পরিষ্কার করো। আগে resource-গুলো `destroy` করো, কারণ সেগুলো ট্র্যাক করা state এখন bucket-এ:
+
+```sh
+make tf CMD="destroy -auto-approve -no-color"
+```
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws title="State bucket-এ lock ও সুরক্ষা">
+  একসঙ্গে দুটি apply state নষ্ট করতে পারে। আসল AWS-এ `s3` backend **locking** সমর্থন করে (যেমন `use_lockfile = true`, বা পুরোনো সেটআপে একটি DynamoDB table), তাই দ্বিতীয় রান অপেক্ষা করে। Bucket-এ versioning চালু করো যাতে খারাপ state roll back করা যায়, আর public access আটকাও, কারণ state সংবেদনশীল।
+</RealAws>
+
+<RealAws title="Workspace ও environment">
+  প্রতিটির নিজের state থাকলে (আলাদা backend key বা workspace দিয়ে) একই ফাইলের সেট variable দিয়ে একাধিক environment (`dev`, `prod`) চালাতে পারে। আলাদা রাখো, যাতে `dev`-এর ভুল `prod` ছুঁতে না পারে।
+</RealAws>
+
+<Note title="মুরগি আর ডিম">
+  যে কনফিগারেশন নিজের state একটি bucket-এ রাখে, সেই bucket সে নিজে বানাতে পারে না। একবার হাতে বা ছোট আলাদা কনফিগারেশনে বানাও।
+</Note>
+
+<Recap>
+
+- Variable হলো input আর output হলো ফল, যা একটি কনফিগারেশনকে পুনর্ব্যবহারযোগ্য করে।
+- যে argument চালু অবস্থায় বদলানো যায় না তা প্রতিস্থাপন বাধ্য করে, তাই plan-এ `forces replacement` খোঁজো।
+- Remote backend একটি ভাগ করা state রাখে; `init -migrate-state` বিদ্যমানটি সরায়, আর আসল AWS locking যোগ করে।
+
+</Recap>

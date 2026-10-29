@@ -1,0 +1,169 @@
+---
+title: State and drift
+description: Terraform trusts its state file and checks it against reality on every plan. Change things behind its back and watch it notice, then destroy everything and rebuild it from the files.
+time: 12 min
+needs:
+  - Desired state
+learn:
+  - What the state file holds and why you do not edit it
+  - How plan detects drift, a change made outside Terraform
+  - What destroy does, and why a rebuild from files works
+---
+
+## The state file
+
+After `apply`, Terraform wrote a `terraform.tfstate` file into `labs/terraform/`. It is a JSON record: for each resource in your configuration, the real object's id and the attributes Terraform last saw. It is how Terraform knows that `aws_s3_bucket.notes` is the bucket named `tf-notes` and not a different one.
+
+`terraform state list` prints what it tracks.
+
+Every `plan` does two things before it compares anything. It **refreshes**: asks AWS for the current attributes of everything in the state. Then it compares three things: your files (what you want), the state (what it last knew) and the refreshed reality (what is there now).
+
+The state file is not a document for you to edit. It can hold sensitive values in plain text, so treat it like a secret, and do not commit it. The next lesson moves it somewhere safer.
+
+## Changes behind Terraform's back
+
+**Drift** is when reality no longer matches the files, because someone changed something by hand: in the console, with the CLI, from another tool. It is the main reason infrastructure and its description diverge.
+
+<Lab title="change a queue by hand" time="~6 min">
+  <Predict>
+    The state says the queue's visibility timeout is 30, matching the file. You change it to 90 with the AWS CLI. What does `plan` report, and what does `apply` then do?
+
+    <Answer>
+      `plan` refreshes, sees 90, and reports **1 to change**: `visibility_timeout_seconds = 90 -> 30`. The file wins. `apply` sets it back to 30 and the hand edit is undone. Nothing in the file had changed; reality had.
+    </Answer>
+  </Predict>
+  <Run>
+This lab continues from the previous lesson, with `tf-notes`, `tf-jobs` and `tf-tasks` applied. List what the state tracks, then change the queue behind Terraform's back:
+
+```sh
+make tf CMD="state list"
+
+export AWS_PROFILE=localstack
+QUEUE_URL=$(aws sqs get-queue-url --queue-name tf-jobs --query QueueUrl --output text)
+aws sqs set-queue-attributes --queue-url "$QUEUE_URL" --attributes VisibilityTimeout=90
+```
+<Output>
+```text
+aws_dynamodb_table.tasks
+aws_s3_bucket.notes
+aws_sqs_queue.jobs
+```
+</Output>
+
+Plan, then apply:
+
+```sh
+make tf CMD="plan -no-color"
+make tf CMD="apply -auto-approve -no-color"
+aws sqs get-queue-attributes --queue-url "$QUEUE_URL" \
+  --attribute-names VisibilityTimeout --query Attributes.VisibilityTimeout --output text
+```
+<Output>
+```text
+# trimmed
+~ visibility_timeout_seconds        = 90 -> 30
+Plan: 0 to add, 1 to change, 0 to destroy.
+Apply complete! Resources: 0 added, 1 changed, 0 destroyed.
+30
+```
+</Output>
+  </Run>
+  <Verify>
+    - `state list` shows all three resources
+    - The plan names the one attribute that drifted, `90 -> 30`
+    - After `apply`, the queue is back to the value in the file
+  </Verify>
+</Lab>
+
+<Lab title="delete something by hand" time="~4 min">
+  <Predict>
+    You remove the bucket with the AWS CLI. The state still lists it. What does `plan` say?
+
+    <Answer>
+      **1 to add**: `aws_s3_bucket.notes will be created`. After the refresh Terraform finds the bucket gone, so it drops it from its picture and plans to create it again. `apply` rebuilds it.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+aws s3 rb s3://tf-notes
+make tf CMD="plan -no-color"
+make tf CMD="apply -auto-approve -no-color"
+aws s3 ls | grep tf-notes
+```
+<Output>
+```text
+# trimmed
+remove_bucket: tf-notes
+# aws_s3_bucket.notes will be created
+Plan: 1 to add, 0 to change, 0 to destroy.
+Apply complete! Resources: 1 added, 0 changed, 0 destroyed.
+2026-10-29 12:00:01 tf-notes
+```
+</Output>
+  </Run>
+  <Verify>
+    - The plan proposes creating exactly the one missing bucket
+    - After `apply`, `tf-notes` is back
+  </Verify>
+</Lab>
+
+## Tear it down, build it up
+
+`destroy` is `apply` for the empty configuration: it deletes everything in the state, in an order that respects dependencies. Because the files fully describe the setup, `apply` can then rebuild all of it.
+
+<Lab title="destroy, then rebuild from the files" time="~5 min" collapsed>
+  <Predict>
+    You run `destroy`. What does the AWS CLI show afterwards, and what is left in the state? Then you run `apply` again. What do you get?
+
+    <Answer>
+      The CLI shows no `tf-` bucket and no `tf-tasks` table, and the state lists no resources. `apply` then reports **3 added**: the same three resources again, from nothing but the file.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+make tf CMD="destroy -auto-approve -no-color"
+aws s3 ls | grep -c tf-
+make tf CMD="state list"
+
+make tf CMD="apply -auto-approve -no-color"
+```
+<Output>
+```text
+# trimmed; "0" is the number of tf- buckets left
+Destroy complete! Resources: 3 destroyed.
+0
+Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
+```
+</Output>
+  </Run>
+  <Verify>
+    - After `destroy`, the count is 0 and `state list` prints nothing
+    - After `apply`, all three resources exist again
+  </Verify>
+</Lab>
+
+<Destructive>
+  `destroy` deletes real resources and the data in them. On real AWS, always read the plan it prints first. Resources can also be protected with `lifecycle { prevent_destroy = true }` in the configuration.
+</Destructive>
+
+## What changes on real AWS
+
+<RealAws title="Drift is common and sometimes intended">
+  On a team, someone will change something in the console during an incident. Run `plan` on a schedule and treat unexpected changes as a signal. Some attributes are managed elsewhere on purpose (for example an autoscaler changing a count), and Terraform can be told to ignore them with `ignore_changes`.
+</RealAws>
+
+<RealAws title="State holds secrets">
+  A resource's attributes, including generated passwords and keys, are written to the state in plain text. The state file must be access-controlled and never committed to git.
+</RealAws>
+
+<Note title="Never edit the state by hand">
+  If the state and reality disagree in a way `plan` cannot fix, use the `terraform state` and `terraform import` commands, which keep the file consistent, rather than editing the JSON.
+</Note>
+
+<Recap>
+
+- The state maps each resource in your files to a real object, and every plan refreshes it against reality.
+- Drift, a change made outside Terraform, shows up as a difference in the plan, and `apply` brings reality back to the files.
+- `destroy` removes everything in the state, and `apply` can rebuild it from the files alone.
+
+</Recap>

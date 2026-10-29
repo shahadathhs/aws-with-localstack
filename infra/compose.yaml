@@ -30,3 +30,25 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+
+  # Terraform without installing it: `make tf CMD="plan"`. Not started by `make up` (profile "tools").
+  # It reaches LocalStack over the Compose network at http://localstack:4566.
+  terraform:
+    profiles: ['tools']
+    image: hashicorp/terraform:1.17.1
+    working_dir: /workspace
+    volumes:
+      - './labs/terraform:/workspace'
+      - 'terraform-plugins:/plugin-cache'
+    environment:
+      - TF_PLUGIN_CACHE_DIR=/plugin-cache
+      - TF_IN_AUTOMATION=1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-eu-west-1}
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+volumes:
+  terraform-plugins:
