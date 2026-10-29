@@ -1,8 +1,5 @@
-import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
 import { uiTranslations } from 'fumadocs-ui/i18n';
-import { Logo } from '@/components/logo';
-import { i18n, isLang } from './i18n';
-import { appName, gitConfig } from './shared';
+import { i18n } from './i18n';
 
 // Bangla UI strings are a first pass: have a native speaker review them
 export const translations = i18n
@@ -24,19 +21,3 @@ export const translations = i18n
       'Copy Text(code block)(aria-label)': 'কপি করুন',
     },
   });
-
-export function baseOptions(lang: string): BaseLayoutProps {
-  const l = isLang(lang) ? lang : i18n.defaultLanguage;
-  return {
-    nav: {
-      title: (
-        <span className="brand">
-          <Logo />
-          {appName}
-        </span>
-      ),
-      url: `/${l}`,
-    },
-    githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
-  };
-}

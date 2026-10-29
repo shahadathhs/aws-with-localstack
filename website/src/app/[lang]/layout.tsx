@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { RootProvider } from 'fumadocs-ui/provider/next';
 import { i18nProvider } from 'fumadocs-ui/i18n';
 import { Fraunces, IBM_Plex_Mono, IBM_Plex_Sans, Noto_Sans_Bengali, Noto_Serif_Bengali } from 'next/font/google';
-import { translations } from '@/lib/layout.shared';
+import { translations } from '@/lib/translations';
 import { i18n } from '@/lib/i18n';
 import { appName, siteUrl } from '@/lib/shared';
 import { JsonLd } from '@/components/json-ld';
@@ -17,6 +17,7 @@ const bnSerif = Noto_Serif_Bengali({ subsets: ['bengali'], variable: '--font-dis
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  icons: { icon: '/favicon.svg' },
   title: { default: appName, template: `%s | ${appName}` },
   description:
     'Learn AWS for free with LocalStack: run S3, SQS, DynamoDB, Lambda and IAM locally in Docker Compose. No AWS account, no cloud bill.',

@@ -7,15 +7,16 @@ import { getMDXComponents } from '@/components/mdx';
 import { JsonLd } from '@/components/json-ld';
 import { personLd } from '@/lib/structured-data';
 import { DocsSidebar } from '@/components/docs-sidebar';
-import { DocsToc } from '@/components/docs-toc';
+import { LessonHeader } from '@/components/lesson/lesson-header';
+import { lessonLabels } from '@/lib/lesson-labels';
 import { isLang, i18n } from '@/lib/i18n';
 import type { Node } from 'fumadocs-core/page-tree';
 
 const flat = (nodes: Node[]): { url: string; name: React.ReactNode }[] =>
   nodes.flatMap((n) => (n.type === 'page' ? [n] : n.type === 'folder' ? [...(n.index ? [n.index] : []), ...flat(n.children)] : []));
 const words = {
-  en: { toc: 'On this page', prev: 'Previous', next: 'Next', lessons: 'All lessons', lesson: 'Lesson', of: 'of' },
-  bn: { toc: 'এই পাতায়', prev: 'আগের পাতা', next: 'পরের পাতা', lessons: 'সব পাঠ', lesson: 'পাঠ', of: '/' },
+  en: { prev: 'Previous', next: 'Next', lessons: 'All lessons', lesson: 'Lesson', of: 'of' },
+  bn: { prev: 'আগের পাতা', next: 'পরের পাতা', lessons: 'সব পাঠ', lesson: 'পাঠ', of: '/' },
 };
 
 type Props = { params: Promise<{ lang: string; slug: string[] }> };
@@ -37,7 +38,7 @@ export default async function Page({ params }: Props) {
   const group = folder && inFolder.length > 1 ? { name: folder.name, at: inFolder.findIndex((p) => p.url === page.url), total: inFolder.length } : null;
   const MDX = page.data.body;
   return (
-    <div className="grid gap-x-10 px-4 py-8 md:px-12 md:py-12 lg:grid-cols-[13.5rem_minmax(0,1fr)] xl:grid-cols-[13.5rem_minmax(0,1fr)_12rem]">
+    <div className="grid gap-x-10 px-4 py-8 md:px-12 md:py-12 lg:grid-cols-[13.5rem_minmax(0,1fr)]">
       <aside className="lg:sticky lg:top-20 lg:border-e lg:border-fd-border lg:pe-4 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
         <details className="mb-6 border-b border-fd-border pb-4 lg:hidden">
           <summary className="cursor-pointer text-sm font-medium">{t.lessons}</summary>
@@ -45,16 +46,25 @@ export default async function Page({ params }: Props) {
         </details>
         <div className="hidden lg:block"><DocsSidebar nodes={tree} current={page.url} /></div>
       </aside>
-      <article className="min-w-0 max-w-[46rem]">
-        {group && (
-          <p className="lesson-eyebrow">
-            <b>{group.name}</b> / {t.lesson} {group.at + 1} {t.of} {group.total}
-          </p>
-        )}
-        <h1 className="lesson-title">{page.data.title}</h1>
-        {page.data.description && <p className="lesson-lead">{page.data.description}</p>}
+      <article className="min-w-0">
+        <LessonHeader
+          eyebrow={
+            group && (
+              <p className="lesson-eyebrow">
+                <b>{group.name}</b> / {t.lesson} {group.at + 1} {t.of} {group.total}
+              </p>
+            )
+          }
+          title={page.data.title}
+          description={page.data.description}
+          time={page.data.time}
+          needs={page.data.needs}
+          learn={page.data.learn}
+          toc={page.data.toc}
+          t={lessonLabels[l]}
+        />
         <div className="prose lesson mt-8">
-          <MDX components={getMDXComponents({ a: createRelativeLink(source, page) })} />
+          <MDX components={getMDXComponents({ a: createRelativeLink(source, page) }, l)} />
         </div>
         {slug.join('/') === 'author' && <JsonLd data={personLd} />}
         <nav className="mt-14 grid gap-3 border-t border-fd-border pt-6 sm:grid-cols-2">
@@ -72,9 +82,6 @@ export default async function Page({ params }: Props) {
           )}
         </nav>
       </article>
-      <aside className="hidden xl:sticky xl:top-20 xl:block xl:self-start">
-        <DocsToc toc={page.data.toc} title={t.toc} />
-      </aside>
     </div>
   );
 }

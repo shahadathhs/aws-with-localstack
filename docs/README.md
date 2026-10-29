@@ -33,23 +33,46 @@ warm paper, ink, real terminal output, and a drawing of the idea before any comm
 | 05  | Landing, mobile (390px)                          | [png](mockups/05-landing-mobile.png) | [png](mockups/05-landing-mobile-dark.png) |
 | 06  | Lesson, mobile                                   | [png](mockups/06-lesson-mobile.png) | [png](mockups/06-lesson-mobile-dark.png) |
 | 07  | Menu open, mobile                                | [png](mockups/07-menu-mobile.png)   | [png](mockups/07-menu-mobile-dark.png)   |
+| 08  | Rich lesson: header strip, diagrams, lab, callouts, recap | [png](mockups/08-lesson-rich.png)   | [png](mockups/08-lesson-rich-dark.png)   |
+| 09  | Rich lesson, mobile                              | [png](mockups/09-lesson-rich-mobile.png) | [png](mockups/09-lesson-rich-mobile-dark.png) |
 
 Still to mock before building: a Bangla lesson (needs a Bengali typeface), the 404 page, and the remaining
 diagrams (presigned URL flow, storage-class ladder).
+
+## Lesson components (built; mockups 08 and 09)
+
+Lessons are authored in MDX with a small kit so they carry the home page's structure instead of plain prose.
+Source: `website/src/components/lesson/`. Section numbers (`01 /`) come from CSS counters on the `##` headings, so
+plain-markdown lessons get them too; the anchor chips are built from the same headings. "Good to know" is neutral
+(not amber), since amber means real AWS. Not built yet: the Command / Expected output tabs on `<Run>`.
+
+| Component | What it is |
+| --- | --- |
+| Lesson header | Eyebrow, title, lead, a meta strip (time, needs, bucket), "You will learn" checklist, and anchor chips (`01 Concept`, `02 Experiment`...) |
+| `<Lab>` with `<Predict>`, `<Run>`, `<Verify>` | The home hero card as steps. Predict has a guess box and a reveal; Run has a copyable terminal with Command / Expected output tabs; Verify is a checklist. A lab can be collapsed. |
+| Callouts | `<RealAws>` amber (with a `cost` tag), `<Destructive>` red, a neutral "good to know". Colour follows the meaning rules above. |
+| Diagram kit | Themed SVG primitives plus reusable diagrams (version stack with before/after, IAM flow, ARN anatomy taking `arn="..."`); more per lesson as needed. |
+| Recap | Closing card with the three things to remember. |
+
+Layout decision: the "On this page" table of contents moves out of a right-hand column and into the lesson
+header as anchor chips. With the sidebar and a TOC inside the 1080px column the article is only about 500px
+wide, too narrow for two diagrams side by side; without the TOC it is about 730px.
 
 ## Navigation
 
 - **Top bar: three links only**: Learning plan, Getting started, Basics. Services (S3, IAM, and later Lambda,
   DynamoDB...) are not in the top bar: the list would grow with every phase. They live in the lesson sidebar,
   grouped by service, and on the Learning plan page.
-- **Desktop:** brand, three links, search (⌘K), language, theme. Content stays in the 1080px column.
-- **Mobile (390px):** brand, search icon and a menu button, each a 44px target. The menu is a full-height
-  list: the three links, the lesson tree grouped by service (current lesson highlighted, done dot per
-  lesson), then language and theme (System, Light, Dark). The sidebar and "On this page" TOC collapse into
-  it and into one collapsed row above the article.
-- **Mobile layout:** one column, 16px gutters, buttons full width, diagrams stacked, the curriculum ledger
-  drops its progress-bar column and keeps status. Code blocks scroll sideways inside their frame and never
-  wrap, so a command stays copy-able; the Copy button sits above the first line so it never covers code.
+- **Desktop:** brand, three links, search (⌘K), language, theme. Every page, home and lessons, uses the same
+  1080px column and header.
+- **Lesson pages:** the lesson list sits in a sticky sidebar next to the article (a collapsed "All lessons"
+  disclosure above the article on phones). The "On this page" links are chips in the lesson header; there is no
+  right-hand table of contents.
+- **Mobile (390px):** brand, search icon and a menu button, each a 44px target. The menu panel holds the three links,
+  language and theme. Buttons are full width, diagrams stack, and code scrolls sideways inside its frame (never
+  wraps), so a command stays copy-able.
+- Mockups 02 (wide docs header, right-hand TOC) and 07 (menu with the lesson tree) are superseded by the built
+  layout and by 08 and 09; they are kept as history.
 
 ## Tokens
 

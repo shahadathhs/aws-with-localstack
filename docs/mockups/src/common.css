@@ -128,3 +128,53 @@ body.m { width: 390px; min-height: 844px; }
 .seg span:last-child { border-right: 0; } .seg .on { background: var(--accent-bg); color: var(--accent); font-weight: 500; }
 .m pre { padding-top: 36px; }
 .m .copy { top: 8px; }
+
+/* rich lesson (08, 09): header strip, lab steps, callouts, recap. Prefix l- keeps these apart from the older mockups. */
+.l-wrap { display: grid; grid-template-columns: 216px minmax(0, 1fr); column-gap: 40px; padding: 36px 48px 56px; }
+.l-side { border-right: 1px solid var(--line); padding-right: 16px; font-size: 14px; }
+.l-side .g { font: 11px "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .08em; color: var(--text3); margin: 20px 0 6px 10px; } .l-side .g:first-child { margin-top: 0; }
+.l-side a { display: flex; gap: 10px; padding: 5px 10px; border-radius: 4px; color: var(--text2); line-height: 1.35; }
+.l-side a i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); margin-top: 7px; }
+.l-side a.on { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+.l-art { min-width: 0; }
+.l-head h1 { font-size: 46px; margin-top: 2px; }
+.l-head .lead { font-size: 17px; max-width: 560px; margin-top: 10px; }
+.l-meta { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 18px; font: 12.5px "IBM Plex Mono", monospace; color: var(--text2); }
+.l-meta b { color: var(--text3); font-weight: 400; text-transform: uppercase; letter-spacing: .07em; margin-right: 6px; }
+.l-learn { margin-top: 18px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--raised); padding: 14px 18px; }
+.l-learn ul { list-style: none; margin-top: 6px; } .l-learn li { display: flex; gap: 10px; font-size: 14.5px; color: var(--text2); padding: 3px 0; } .l-learn li .i { color: var(--ok); margin-top: 4px; flex: none; }
+.l-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.l-chips span { font: 12px "IBM Plex Mono", monospace; border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px 12px; color: var(--text2); } .l-chips b { color: var(--accent); font-weight: 500; margin-right: 6px; }
+.l-sec { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--line); }
+.l-sec h2 { font-size: 28px; margin-bottom: 10px; }
+.l-sec p { color: var(--text2); margin: 10px 0; } .l-sec p b { color: var(--text); font-weight: 600; }
+.l-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0; }
+.l-fig { border: 1px solid var(--line-strong); border-radius: 8px; background: var(--raised); overflow: hidden; }
+.l-fig svg { display: block; width: 100%; height: auto; }
+.l-fig figcaption { border-top: 1px solid var(--line); padding: 8px 14px; font: 12px "IBM Plex Mono", monospace; color: var(--text2); background: var(--bg); }
+.l-fig figcaption b { color: var(--accent); font-weight: 500; margin-right: 6px; }
+.l-lab { border: 1px solid var(--line-strong); border-radius: 8px; background: var(--raised); overflow: hidden; margin: 16px 0; }
+.l-lab .hd { display: flex; justify-content: space-between; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--bg); font: 12px "IBM Plex Mono", monospace; color: var(--text3); }
+.l-step { display: grid; grid-template-columns: 28px 1fr; gap: 12px; padding: 14px; border-bottom: 1px solid var(--line); } .l-step:last-child { border-bottom: 0; }
+.l-step .n { width: 24px; height: 24px; border-radius: 50%; border: 1px solid currentColor; display: grid; place-items: center; font: 12px "IBM Plex Mono", monospace; }
+.l-step.predict .n, .l-step.predict .tag { color: var(--accent); } .l-step.run .n, .l-step.run .tag { color: var(--text2); } .l-step.verify .n, .l-step.verify .tag { color: var(--ok); }
+.l-step .tag { margin-bottom: 4px; } .l-step p { margin: 0 0 8px; color: var(--text2); font-size: 14.5px; }
+.l-guess { border: 1px dashed var(--accent); border-radius: 6px; padding: 10px 12px; font: 13px "IBM Plex Mono", monospace; color: var(--text3); background: var(--bg); }
+.l-btn { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 6px 12px; font: 12.5px "IBM Plex Mono", monospace; }
+.l-answer { margin-top: 10px; border-left: 3px solid var(--accent); background: var(--accent-bg); padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 14px; color: var(--text); }
+.l-term { position: relative; }
+.l-tabs { display: flex; gap: 2px; margin-bottom: -1px; font: 12px "IBM Plex Mono", monospace; } .l-tabs span { padding: 5px 12px; border: 1px solid var(--line); border-bottom: 0; border-radius: 6px 6px 0 0; color: var(--text3); background: var(--bg); } .l-tabs .on { color: var(--text); background: var(--sunken); }
+.l-check { list-style: none; } .l-check li { display: flex; gap: 10px; font-size: 14.5px; color: var(--text2); padding: 3px 0; } .l-check .i { color: var(--ok); margin-top: 4px; flex: none; }
+.l-call { display: grid; grid-template-columns: 4px 1fr; border: 1px solid var(--line); border-radius: 6px; background: var(--raised); overflow: hidden; margin: 12px 0; }
+.l-call > i { background: var(--warn, #a8620a); } .l-call .b { padding: 12px 16px; font-size: 14.5px; color: var(--text2); }
+.l-call .k { display: flex; align-items: center; gap: 10px; font: 11px "IBM Plex Mono", monospace; letter-spacing: .07em; text-transform: uppercase; color: var(--warn, #a8620a); margin-bottom: 3px; }
+.l-call .cost { border: 1px solid currentColor; border-radius: 3px; padding: 0 6px; }
+.l-call.deny > i { background: var(--deny); } .l-call.deny .k { color: var(--deny); }
+.l-recap { margin-top: 40px; border: 1px solid var(--text); border-radius: 8px; padding: 18px 20px; background: var(--raised); }
+.l-recap ul { margin: 8px 0 0 18px; color: var(--text2); } .l-recap li { margin: 4px 0; }
+.l-pager { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; } .l-pager div { border: 1px solid var(--line-strong); border-radius: 6px; padding: 12px 16px; } .l-pager small { display: block; font: 11px "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); }
+:root:not([data-theme="dark"]) { --warn: #a8620a; } :root[data-theme="dark"] { --warn: #e8a54b; }
+/* mobile variant */
+.m .l-wrap { display: block; padding: 20px 16px 40px; } .m .l-head h1 { font-size: 38px; } .m .l-two { grid-template-columns: 1fr; } .m .l-pager { grid-template-columns: 1fr; }
+.m .l-all { border-bottom: 1px solid var(--line); padding: 4px 0 14px; margin-bottom: 18px; font-size: 14px; font-weight: 500; display: flex; justify-content: space-between; }
+.m .l-step { grid-template-columns: 1fr; gap: 6px; } .m .l-step .n { display: none; }

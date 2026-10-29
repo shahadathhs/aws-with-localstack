@@ -17,10 +17,13 @@ export function LabBlock({ t }: { t: Copy['lab'] }) {
         <span className="tag run">{t.run}</span>
         <pre className="term">
           <span className="p">$</span> aws s3api list-object-versions \{'\n'}
-          {'    '}--bucket ph1-bucket{'\n'}
-          <span className="o">Versions:      2{'\n'}DeleteMarkers: 1{'\n'}</span>
-          <span className="p">$</span> aws s3 cp s3://ph1-bucket/note.txt -{'\n'}
-          <span className="r">404 NoSuchKey</span>
+          {'    '}--bucket ph1-bucket \{'\n'}
+          {'    '}--query &apos;[length(Versions),length(DeleteMarkers)]&apos; \{'\n'}
+          {'    '}--output text{'\n'}
+          <span className="o">2    1{'\n'}</span>
+          <span className="p">$</span> aws s3api get-object --bucket ph1-bucket \{'\n'}
+          {'    '}--key note.txt out.txt{'\n'}
+          <span className="r">NoSuchKey</span>
         </pre>
       </div>
       <div className="nb-row">

@@ -9,12 +9,14 @@
   <div class=hd><span>lab · s3 / versioning</span><span>eu-west-1</span></div>
   <div class=row><span class="tag predict">predict</span><div style="font-size:14px">PUT, PUT, DELETE on one key with versioning on. How many versions? What does GET return?</div><div class=mono style="font-size:12px;margin-top:6px;color:var(--accent)">my guess: 2 versions, GET returns v2</div></div>
   <div class=row><span class="tag run">run</span><pre style="margin-top:2px;font-size:11.5px"><span class=p>$</span> aws s3api list-object-versions \
-    --bucket ph1-bucket
-<span class=o>Versions:      2</span>
-<span class=o>DeleteMarkers: 1</span>
-<span class=p>$</span> aws s3 cp s3://ph1-bucket/note.txt -
-<span class=r>404 NoSuchKey</span></pre></div>
-  <div class=row><span class="tag verify">verify</span><div style="font-size:14px;color:var(--text2)">Close: 2 versions, but the delete marker is the newest entry, so a plain GET is a 404.</div></div>
+    --bucket ph1-bucket \
+    --query '[length(Versions),length(DeleteMarkers)]' \
+    --output text
+<span class=o>2    1</span>
+<span class=p>$</span> aws s3api get-object --bucket ph1-bucket \
+    --key note.txt out.txt
+<span class=r>NoSuchKey</span></pre></div>
+  <div class=row><span class="tag verify">verify</span><div style="font-size:14px;color:var(--text2)">Close: 2 versions and 1 delete marker. The marker is the newest entry, so reading the key fails with NoSuchKey.</div></div>
  </div>
 </div>
 <div class=sec><div class=label><b>01</b> / See the model</div><h2 style="margin-bottom:18px">Every lesson draws the idea first.</h2>

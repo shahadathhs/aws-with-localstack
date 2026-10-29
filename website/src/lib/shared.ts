@@ -4,7 +4,6 @@ export const siteUrl = 'https://aws-with-localstack.vercel.app';
 export const gitConfig = {
   user: 'shahadathhs',
   repo: 'aws-with-localstack',
-  branch: 'main',
 };
 
 export const author = {

@@ -5,6 +5,10 @@ Design source of truth: `../docs/` (principles, tokens, mockups). Match it; chan
 
 - Content is Markdown in `content/docs/<lang>/...` (`en`, `bn`), one folder per service with a `meta.json`
   for title and order. URLs are `/<lang>/<folder>/<page>`. A lesson must exist in both languages.
+- Lessons can be `.mdx` and use the lesson kit in `src/components/lesson/` (`Lab`/`Predict`/`Answer`/`Run`/`Verify`,
+  `RealAws`/`Destructive`/`Note`, `Figures`/`Figure`, diagrams, `Recap`; header fields `time`, `needs`, `learn`).
+  Component labels follow the page language (`src/lib/lesson-labels.ts`). Keep en and bn built the same way:
+  `pnpm check:content` compares components, sections, code blocks and tables. See `docs/README.md`.
 - Colours come from the tokens in `src/app/global.css` (mirrors `docs/mockups/src/common.css`), mapped
   onto Fumadocs' `--color-fd-*` variables. Colour carries meaning: blue predict/do, green verified, red denied.
 - Top bar is `components/site-header.tsx`: three links only (Learning plan, Getting started, Basics). Services
