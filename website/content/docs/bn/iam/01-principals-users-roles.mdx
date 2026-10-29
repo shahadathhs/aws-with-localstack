@@ -1,11 +1,16 @@
 ---
 title: Principal, user, role
 description: IAM-এর চরিত্রতালিকা — root, user, group, role — এবং কেন temporary credential প্রায় সবসময় long-lived key-কে হারায়।
+time: ৯ মিনিট
+needs:
+  - localstack profile-সহ চালু LocalStack
+learn:
+  - Principal কী, আর তার চার ধরন
+  - কেন key-সহ user-এর চেয়ে temporary credential-সহ role ভালো
+  - Trust policy কীভাবে একটি বাক্য হিসেবে পড়তে হয়
 ---
 
-IAM অধ্যায়, পর্ব ১।
-
-## কনসেপ্ট
+## কে জিজ্ঞেস করছে
 
 IAM প্রতিটি API call-এর জন্য একটি প্রশ্নের উত্তর দেয়: **কে জিজ্ঞেস করছে, এবং তার অনুমতি আছে?** তার "কে" হলো **principal**। Principal-এর ধরন:
 
@@ -22,6 +27,8 @@ IAM **user** স্থায়ী identity, স্থায়ী key সহ।
 
 **Role** এমন identity যাতে _কেউ লগইন করে না_। বিশ্বস্ত principal-রা এটি **assume** করে — Security Token Service (STS) হ্যান্ডশেক করে ("এই role-এর _trust policy_ বলে তুমি বিশ্বস্ত — প্রমাণ করো") এবং **temporary credential** ফেরত দেয় যা নিজেই মেয়াদোত্তীর্ণ হয়। Key চুরি হলো? ঘণ্টা শেষে সেটি আগেই মৃত।
 
+<Figure caption="long-lived user key বনাম role ও temporary credential"><AssumeRole /></Figure>
+
 Role বাস্তবে কোথায় থাকে:
 
 - **Lambda ফাংশনের একটি role থাকে** — কোড সেই role-এর অনুমতিতে চলে, কোডে কোনো key নেই
@@ -34,10 +41,21 @@ Group মানেই user-দের সংগ্রহ, policy স্কেল�
 
 > মানুষ ও মেশিন **role + temporary credential** পাবে। Long-lived IAM user key exception, এবং লিখিত যুক্তি ও ঘূর্ণন (rotation) বাধ্যতামূলক।
 
-## LocalStack-এ
+## Actor বানাও
 
-LocalStack যেকোনো credential নেয় (`test`/`test`) এবং ডিফল্টে আসল STS token বানায় না — enforcement নেই। IAM API নিজে চলে; actor-রা বানিয়ে _তাদের JSON পড়ো_, কারণ IAM JSON পড়তে পারাই স্থানান্তরযোগ্য দক্ষতা:
+<Note title="LocalStack-এ">
+  LocalStack যেকোনো credential নেয় (`test`/`test`) এবং ডিফল্টে আসল STS token বানায় না — enforcement নেই। IAM API নিজে চলে; actor-রা বানিয়ে _তাদের JSON পড়ো_, কারণ IAM JSON পড়তে পারাই স্থানান্তরযোগ্য দক্ষতা।
+</Note>
 
+<Lab title="একটি user আর একটি role" time="~৪ মিনিট">
+  <Predict>
+    তুমি এমন একটি role বানালে যার trust policy-তে principal `lambda.amazonaws.com`। কে এটি assume করতে পারবে?
+
+    <Answer>
+      _Lambda service এই role assume করতে পারে।_ ভবিষ্যতে কোনো Lambda ফাংশন `report-reader` "হয়ে" চলার অনুমতি ঠিক এই বাক্যটিই দেয়। অন্য কেউ — EC2 না, user না — assume করতে পারে না।
+    </Answer>
+  </Predict>
+  <Run>
 ```sh
 export AWS_PROFILE=localstack
 
@@ -51,11 +69,31 @@ aws iam create-role --role-name report-reader --assume-role-policy-document '{
   }]
 }'
 ```
+  </Run>
+  <Verify>
+    - Trust policy-টি গদ্যে পড়তে পারছ: Lambda service এই role assume করতে পারে
+    - এতে আর কোনো principal নেই, তাই EC2 আর user বাদ
+  </Verify>
+</Lab>
 
-Trust policy-টি গদ্যে পড়ো: _Lambda service এই role assume করতে পারে।_ ভবিষ্যতে কোনো Lambda ফাংশন `report-reader` "হয়ে" চলার অনুমতি ঠিক এই বাক্যটিই দেয়। অন্য কেউ — EC2 না, user না — assume করতে পারে না।
+## রিয়েল AWS-এ যা বদলায়
 
-## রিয়েল AWS-এ
+<RealAws title="Root user সামলে রাখো">
+  অ্যাকাউন্টের আসল সুরক্ষা **root user** থেকে শুরু: MFA চালু, access key নেই, বছরে গুনে রাখার মতো ব্যবহার — দৈনন্দিন সব কাজ তার নিচের IAM user/role দিয়ে।
+</RealAws>
 
-- অ্যাকাউন্টের আসল সুরক্ষা **root user** থেকে শুরু: MFA চালু, access key নেই, বছরে গুনে রাখার মতো ব্যবহার — দৈনন্দিন সব কাজ তার নিচের IAM user/role দিয়ে
-- বাস্তবে মানুষের জন্য IAM user-ই হয় না — **IAM Identity Center (SSO)** কোম্পানির লগইনকে role-এ federate করে
-- `aws sts get-caller-identity`-তে হাত পাকাও — _তুমি এই মুহূর্তে কে_ বলে দেয়, আর "AccessDenied" ডিবাগিংয়ের অর্ধেক যাত্রা এখান থেকেই শুরু
+<RealAws title="মানুষ SSO ব্যবহার করে, user নয়">
+  বাস্তবে মানুষের জন্য IAM user-ই হয় না — **IAM Identity Center (SSO)** কোম্পানির লগইনকে role-এ federate করে।
+</RealAws>
+
+<Note title="আমি কে?">
+  `aws sts get-caller-identity`-তে হাত পাকাও — _তুমি এই মুহূর্তে কে_ বলে দেয়, আর "AccessDenied" ডিবাগিংয়ের অর্ধেক যাত্রা এখান থেকেই শুরু।
+</Note>
+
+<Recap>
+
+- Principal হলো প্রতিটি রিকোয়েস্টের "কে": root, user, role বা federated identity।
+- Temporary credential-সহ role বেছে নাও; long-lived user key যুক্তিসহ ব্যতিক্রম।
+- Trust policy বলে কে role assume করতে পারে: এটিকে একটি বাক্য হিসেবে পড়ো।
+
+</Recap>

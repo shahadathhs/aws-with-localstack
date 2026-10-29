@@ -1,20 +1,22 @@
 ---
 title: AWS CLI basics — how it's configured
 description: Profiles, config files, resolution order, request lifecycle and SigV4 — the theory the whole setup rides on.
+time: 6 min
+needs:
+  - Installing the AWS CLI (all platforms)
+learn:
+  - What lives in config versus credentials, and what a profile is
+  - Which source wins when a setting is given in several places
+  - Why a single endpoint_url is enough to point the CLI at LocalStack
 ---
 
-Official references:
+Official references: [Config files](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) · [Named profiles](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-profiles.html) · [Environment variables](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html) · [SigV4](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv.html)
 
-> [Config files](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html) ·
-> [Named profiles](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-profiles.html) ·
-> [Environment variables](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html) ·
-> [SigV4](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv.html)
-
-## 1. What the AWS CLI really is
+## What the AWS CLI really is
 
 Not magic — an HTTPS client. Every command (`aws s3 ls`) becomes an **HTTP request to an API endpoint**, signed with your credentials, and the JSON/XML response is parsed back to your terminal. The AWS Console and language SDKs speak the exact same protocol — the CLI is just a wrapper that knows the APIs of ~300 services.
 
-## 2. The two configuration files
+## The two configuration files
 
 | File                 | Contains                                     | Nature                             |
 | -------------------- | -------------------------------------------- | ---------------------------------- |
@@ -36,7 +38,11 @@ aws_access_key_id=test
 aws_secret_access_key=test
 ```
 
-## 3. The key concept: profiles
+<RealAws title="Real keys are secret">
+  On real AWS the `credentials` file holds keys that identify you and can cost money. The `test`/`test` pair here is a placeholder that LocalStack never checks.
+</RealAws>
+
+## Profiles: named bundles of settings
 
 A **profile** is a named bundle of settings — one section in `config` + one section in `credentials` sharing the same name. A machine can hold many side by side:
 
@@ -54,20 +60,15 @@ export AWS_PROFILE=localstack      # for the whole shell session
 aws s3 ls                          # now uses localstack
 ```
 
-## 4. Resolution order (who wins)
+## Resolution order: who wins
 
 For every command the CLI gathers settings; later sources override earlier ones:
 
-```
-1. CLI flags            --region us-east-1            (highest)
-2. Environment vars     AWS_PROFILE, AWS_DEFAULT_REGION, ...
-3. Config files         ~/.aws/config + credentials
-4. Built-in defaults    (e.g. us-east-1)
-```
+<Figure caption="how the CLI picks a setting"><ResolutionLadder /></Figure>
 
 That's why `make aws CMD='s3 ls'` works: it runs `AWS_PROFILE=localstack aws s3 ls` — layer 2 selects the profile, then layer 3 supplies region + endpoint.
 
-## 5. Life of a command
+## The life of a command
 
 ```
 aws s3 ls
@@ -87,7 +88,7 @@ See the actual headers yourself:
 aws s3 ls --debug 2>&1 | grep -i authorization
 ```
 
-## 6. The `endpoint_url` override — why LocalStack works
+## The endpoint_url override: why LocalStack works
 
 Normally the CLI _computes_ the endpoint from service + region: `https://s3.eu-west-1.amazonaws.com`. A profile's `endpoint_url` overrides only that final step:
 
@@ -98,10 +99,18 @@ localstack: sign(service, region) → http://localhost:4566        ← only this
 
 Signing, parsing, retry logic, SDK behavior — all identical. "Where AWS is" is just a swappable layer. That's why later your app SDK code and Terraform need zero changes beyond the endpoint.
 
-## 7. In real life you'd also have
+## What you would also have in real life
 
 - `aws configure` → the interactive wizard writing these same files
 - IAM users / SSO / roles → where _real_ credentials come from (LocalStack doesn't care — any string works)
 - `--output json|yaml|table|text` → presentation only
 
 Related: [Installing the AWS CLI](/en/getting-started/install-aws-cli/) · [Running LocalStack](/en/getting-started/localstack-compose/)
+
+<Recap>
+
+- The CLI is an HTTPS client: it builds a request, signs it with SigV4 and prints the parsed response.
+- Settings resolve flags first, then environment variables, then config files, then built-in defaults; a profile bundles one `config` and one `credentials` section.
+- A profile's `endpoint_url` swaps only the destination, which is all LocalStack needs.
+
+</Recap>

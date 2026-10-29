@@ -1,11 +1,17 @@
 ---
 title: অবজেক্ট মডেল
 description: Bucket, key, object, prefix বনাম ফোল্ডার, কনসিস্টেন্সি ও durability — S3-র আসল ডেটা মডেল।
+time: ১১ মিনিট
+needs:
+  - Docker Compose দিয়ে LocalStack চালানো
+  - AWS CLI ইনস্টল (সব প্ল্যাটফর্ম)
+learn:
+  - S3-তে কেন ফোল্ডার নেই, আছে শুধু key আর prefix
+  - Delimiter দিয়ে "ফোল্ডার listing" কীভাবে হিসাব হয়
+  - Durability বনাম availability, আর কেন কোনোটিই backup নয়
 ---
 
-S3 অধ্যায়, পর্ব ১।
-
-## কনসেপ্ট
+## Bucket, key আর object
 
 S3-র পুরো ডেটা মডেল এক লাইনে:
 
@@ -31,11 +37,17 @@ S3-র পুরো ডেটা মডেল এক লাইনে:
 | **ETag**         | bytes-এর MD5 — _সাধারণ put_-এ। Multipart বা KMS-encrypted-এ নয়; তখন checksum (CRC32, SHA-256)               |
 | **StorageClass** | bytes কোন তাকে রাখা — [পরের অধ্যায়](/bn/s3/03-storage-classes-and-lifecycle/)                               |
 
-### ফোল্ডার বলে কিছু নেই
+## ফোল্ডার বলে কিছু নেই
 
 `docs/notes/today.txt` একটি key। `docs/` বা `docs/notes/` S3 কোনো কিছু সংরক্ষণ করে না — এরা **prefix**। Console-এর ট্রি ভিউ আর CLI-র `PRE` লাইন listing-এর সময় key-র নাম থেকে _হিসাব করা_ হয়।
 
+<Figure caption="console ফোল্ডার দেখায়; S3 রাখে সমতল key">
+  <FolderIllusion />
+</Figure>
+
 Listing মেকানিজম: `ListObjectsV2` নেয় `Prefix` (ফিল্টার) ও ঐচ্ছিক `Delimiter` (সাধারণত `/`)। Delimiter দিলে S3 key-গুলোকে পরবর্তী segment অনুযায়ী দলবদ্ধ করে **CommonPrefixes** দেয় — "ফোল্ডার listing"-এর পুরো বাস্তবায়ন এটুকুই। এটি key index-এর ওপর একটি scan — তাই এক prefix-এ লাখো key হলে listing ধীর ও paginated, কিন্তু জানা এক key আনা দ্রুত ও constant-time।
+
+## কনসিস্টেন্সি ও durability
 
 ### কনসিস্টেন্সি
 
@@ -47,10 +59,17 @@ S3 সব read/write-এ **strongly consistent** (ডিসেম্বর ২�
 - **Availability 99.99%** = এখনই S3-তে _পৌঁছাতে_ পারার সম্ভাবনা — durability-র চেয়ে অনেক কম; S3 ক্ষণিক অ্যাক্সেসযোগ্য না হলেও ডেটা হারায় না
 - কোনোটিই **backup নয়**। S3 ডিস্ক/ডেটাসেন্টার failure থেকে বাঁচায়, "ভুল prefix ডিলিট হয়ে গেছে" থেকে নয় — সেটি versioning আর আলাদা backup account
 
-## এক্সপেরিমেন্ট: ফোল্ডার ইলিউশন
+## ফোল্ডার ইলিউশন
 
-আগে অনুমান করো: এই কমান্ডগুলোর পরে bucket-এ কয়টি object আছে?
+<Lab title="একটি object, কোনো ফোল্ডার নেই" time="~৫ মিনিট">
+  <Predict>
+    এই কমান্ডগুলোর পরে bucket-এ কয়টি object আছে?
 
+    <Answer>
+      **একটি।** key `docs/notes/today.txt` শুধু bytes-কে নির্দেশ করে; আর কিছু সংরক্ষিত হয়নি, "ফোল্ডার" listing-এর সময় হিসাব করা হয়।
+    </Answer>
+  </Predict>
+  <Run>
 ```sh
 export AWS_PROFILE=localstack
 aws s3 mb s3://ph1-bucket
@@ -68,7 +87,7 @@ aws s3api list-objects-v2 --bucket ph1-bucket
 # Contents: [ { Key: "docs/notes/today.txt", ETag: "b1946ac92...", ... } ]
 ```
 
-একটিই object। `ETag` তোমার ৬ byte-এর MD5 (`hello\n`) — যাচাই করো: `md5 -q /tmp/today.txt`। key শুধু bytes-কে নির্দেশ করে।
+`ETag` তোমার ৬ byte-এর MD5 (`hello\n`) — যাচাই করো: `md5 -q /tmp/today.txt`।
 
 দ্বিতীয় দৃষ্টি — ট্রি ভিউয়ের পেছনের যন্ত্র:
 
@@ -78,9 +97,32 @@ aws s3api list-objects-v2 --bucket ph1-bucket --delimiter '/'
 aws s3api list-objects-v2 --bucket ph1-bucket --prefix 'docs/' --delimiter '/'
 # CommonPrefixes: [ { Prefix: "docs/notes/" } ]
 ```
+  </Run>
+  <Verify>
+    - `list-objects-v2` key `docs/notes/today.txt`-সহ মাত্র একটি object দেখায়
+    - `ETag` মেলে `md5 -q /tmp/today.txt`-এর সাথে
+    - `--delimiter '/'` দিলে `docs/` একটি `CommonPrefixes` এন্ট্রি হিসেবে আসে, আর `--prefix 'docs/'` দিলে আসে `docs/notes/`
+  </Verify>
+</Lab>
 
-## রিয়েল AWS-এ
+## বিল যুক্ত হলে যা বদলায়
 
-- রিকোয়েস্ট ও bytes প্রতি বিল হয়: PUT/GET/list প্রতিটিরই দাম আছে। ১০ লাখ key-র "ফোল্ডার ওয়াক" মানে ১০ লাখ billed LIST রিকোয়েস্ট
-- Bucket নাম সবাই সাধতে পারে — globally unique নেমস্পেস পৃথিবীর সব AWS গ্রাহকের সাথে শেয়ার্ড
-- 5 GB single-PUT সীমার কারণে বাস্তবে সবাই multipart ব্যবহার করে; LocalStack বড় single put নেয়, রিয়েল AWS প্রত্যাখ্যান করবে
+<RealAws cost title="রিকোয়েস্ট ও bytes-এর বিল হয়">
+  রিকোয়েস্ট ও bytes প্রতি বিল হয়: PUT/GET/list প্রতিটিরই দাম আছে, GB-মাসের স্টোরেজেরও। ১০ লাখ key-র "ফোল্ডার ওয়াক" মানে ১০ লাখ billed LIST রিকোয়েস্ট।
+</RealAws>
+
+<RealAws title="Bucket নাম দখল করা যায়">
+  Globally unique নেমস্পেস পৃথিবীর সব AWS গ্রাহকের সাথে শেয়ার্ড।
+</RealAws>
+
+<RealAws title="5 GB single-PUT সীমা">
+  5 GB single-PUT সীমার কারণে বাস্তবে সবাই multipart ব্যবহার করে; LocalStack বড় single put নেয়, রিয়েল AWS প্রত্যাখ্যান করবে।
+</RealAws>
+
+<Recap>
+
+- S3 রাখে `(bucket, key)` → bytes + metadata; ফোল্ডার নেই, আছে শুধু listing-এর সময় হিসাব করা prefix।
+- `Prefix` আর `Delimiter` সমতল key-কে CommonPrefixes বানায়, এটাই "ফোল্ডার listing"।
+- Durability আর availability এক নয়, আর কোনোটিই backup নয়।
+
+</Recap>

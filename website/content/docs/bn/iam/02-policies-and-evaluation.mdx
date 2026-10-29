@@ -1,15 +1,18 @@
 ---
 title: পলিসি ও evaluation
 description: Policy JSON-এর গঠন, evaluation ক্রম, explicit deny, least privilege — AWS আসলে কীভাবে allow/deny সিদ্ধান্ত নেয়।
+time: ৯ মিনিট
+needs:
+  - Principal, user, role
+learn:
+  - একটি policy statement ফিল্ড ধরে ধরে কীভাবে পড়তে হয়
+  - কেন explicit deny beats allow beats implicit deny
+  - Least privilege Action আর Resource-এর কাছে কী চায়
 ---
 
-IAM অধ্যায়, পর্ব ২।
-
-## কনসেপ্ট
+## এক statement, একটি বাক্য হিসেবে
 
 **Policy** হলো অনুমতির JSON ডকুমেন্ট। IAM-এর প্রতিটি সিদ্ধান্তের উৎস এসব ডকুমেন্ট; অন্য কোনো জাদু নেই।
-
-### গঠন — এক statement, একটি বাক্য হিসেবে
 
 ```json
 {
@@ -26,6 +29,8 @@ IAM অধ্যায়, পর্ব ২।
 }
 ```
 
+<Figure caption="একটি statement, ফিল্ড ধরে ধরে"><PolicyStatement /></Figure>
+
 - **Effect** — `Allow` বা `Deny`। "হয়তো" নেই
 - **Action** — service-prefixed API অপারেশন (`s3:GetObject`, `dynamodb:PutItem`, `sts:AssumeRole`)। Wildcard চলে: `s3:Get*`
 - **Resource** — কোন ARN-এ খাটে। কিছু action resourceless (`s3:ListAllMyBuckets`-এ `Resource: "*"`)
@@ -33,7 +38,7 @@ IAM অধ্যায়, পর্ব ২।
 
 খেয়াল করো: `s3:ListBucket` টার্গেট _bucket_ ARN, কিন্তু `s3:GetObject` টার্গেট _object_ ARN (`.../todo/*`) — listing আর reading ভিন্ন action, ভিন্ন resource। S3 policy-র ক্লাসিক ফাঁদ এটিই।
 
-### Policy-র স্বাদ — ডকুমেন্ট কোথায় থাকতে পারে
+## Policy কোথায় থাকে
 
 | ধরন                 | লাগানো হয়                                | উদাহরণ                                                            |
 | ------------------- | ----------------------------------------- | ----------------------------------------------------------------- |
@@ -43,13 +48,15 @@ IAM অধ্যায়, পর্ব ২।
 | SCP                 | পুরো account (organizations)              | কোম্পানি-স্তরের guardrail                                         |
 | Trust policy        | role — _কে assume করতে পারে_              | [principals](/bn/iam/01-principals-users-roles/)-এর Lambda উদাহরণ |
 
-### Evaluation — এক ক্রম, কোনো ব্যতিক্রম নেই
+## এক ক্রম, কোনো ব্যতিক্রম নেই
 
 প্রতিটি রিকোয়েস্টে AWS principal ও resource — দুজনের খাটু সব policy জমা করে, তারপর:
 
 1. যেকোনো **explicit `Deny`** → **DENY।** শেষ। কিছুই এটিকে টেক্কা দেয় না
 2. নাহলে অন্তত একটি **explicit `Allow`** → **ALLOW**
 3. নাহলে → **implicit deny** — **DENY** (কোনো ডকুমেন্টই এই action-এর কথা বলেইনি)
+
+<Figure caption="আগে explicit deny, তারপর explicit allow, শেষে implicit deny"><IamFlow /></Figure>
 
 তিন শব্দে মুখস্থ: **explicit deny beats allow beats implicit deny।** দৈনন্দিন লাভ হলো ৩ নম্বরে: অনুমতির অনুপস্থিতিই প্রত্যাখ্যান — "চলারই কথা" কোনো policy নয়।
 
@@ -59,10 +66,26 @@ Same-account বনাম cross-account একটি জিনিস বদল�
 
 যতটা কাজ করে ততটাই সরু Action তালিকা ও সরু Resource ARN লেখো। `Action: "*", Resource: "*"` মানে দুর্ঘটনা বিপর্যয়ে রূপ নেওয়া। বাস্তবে iterate করো: একটু চওড়া দিয়ে শুরু, **IAM Access Analyzer** policy generation চালু করো (প্রকৃত ব্যবহার দেখে ন্যূনতম policy প্রস্তাব করে), তারপর শক্ত করো।
 
-## এক্সপেরিমেন্ট
+## মাথায় সিমুলেট করো
 
-LocalStack IAM policy রাখে কিন্তু enforce করে না — এক্সপেরিমেন্ট মানে পড়া, লেখা আর _মাথায় সিমুলেট_:
+<Note title="LocalStack-এ">
+  LocalStack IAM policy রাখে কিন্তু enforce করে না — এক্সপেরিমেন্ট মানে পড়া, লেখা আর _মাথায় সিমুলেট_।
+</Note>
 
+<Lab title="allow, explicit deny, implicit deny" time="~৬ মিনিট">
+  <Predict>
+    নিচের `TodoRead` policy `report-bot`-এ লাগানো থাকলে প্রতিটিতে লেখো allow / explicit-deny / implicit-deny:
+
+    1. `report-bot` চালায় `s3:GetObject` — `ph1-bucket/todo/a.txt`
+    2. `report-bot` চালায় `s3:GetObject` — `ph1-bucket/docs/notes/today.txt`
+    3. `report-bot` চালায় `s3:PutObject` — `ph1-bucket/todo/b.txt`
+    4. দ্বিতীয় statement যোগ হলো: `Effect: Deny, Action: s3:GetObject, Resource: ph1-bucket/todo/secret/*` — এখন `todo/secret/k.txt`?
+
+    <Answer>
+      ১ allow (statement মেলে) · ২ implicit deny (ListBucket চলে কিন্তু ওই prefix-এর GetObject কোথাও নেই) · ৩ implicit deny (PutObject-এর কথাই নেই) · ৪ explicit deny — allow মিললেও deny জেতে।
+    </Answer>
+  </Predict>
+  <Run>
 ```sh
 export AWS_PROFILE=localstack
 
@@ -79,17 +102,27 @@ aws iam put-user-policy --user-name report-bot --policy-name TodoRead --policy-d
 aws iam list-user-policies --user-name report-bot
 aws iam get-user-policy --user-name report-bot --policy-name TodoRead
 ```
+  </Run>
+  <Verify>
+    - `list-user-policies` `report-bot`-এর জন্য `TodoRead` দেখায়
+    - `get-user-policy` তোমার রাখা policy ডকুমেন্টটি ফেরত দেয়
+  </Verify>
+</Lab>
 
-এবার নিজেকে কুইজ (প্রতিটিতে লেখো allow / explicit-deny / implicit-deny):
+## রিয়েল AWS-এ যা বদলায়
 
-1. `report-bot` চালায় `s3:GetObject` — `ph1-bucket/todo/a.txt`
-2. `report-bot` চালায় `s3:GetObject` — `ph1-bucket/docs/notes/today.txt`
-3. `report-bot` চালায় `s3:PutObject` — `ph1-bucket/todo/b.txt`
-4. দ্বিতীয় statement যোগ হলো: `Effect: Deny, Action: s3:GetObject, Resource: ph1-bucket/todo/secret/*` — এখন `todo/secret/k.txt`?
+<RealAws title="আসল denial ডিবাগ করো">
+  **AWS CloudTrail** (হুবহু রিকোয়েস্ট + সিদ্ধান্ত দেখায়) ও **IAM Policy Simulator** (`aws iam simulate-principal-policy`) ব্যবহার করো — resource ছোঁয়া ছাড়াই কাল্পনিক action মূল্যায়ন করে।
+</RealAws>
 
-উত্তর: ১ allow (statement মেলে) · ২ implicit deny (ListBucket চলে কিন্তু ওই prefix-এর GetObject কোথাও নেই) · ৩ implicit deny (PutObject-এর কথাই নেই) · ৪ explicit deny — allow মিললেও deny জেতে।
+<Note title="AccessDenied পেলে">
+  চাকরিতে: _তুমি কে_ (`sts get-caller-identity`), _কোন policy allow করার কথা_, এবং _explicit deny বা SCP override করছে কি না_ — এই তিনটি দেখো।
+</Note>
 
-## রিয়েল AWS-এ
+<Recap>
 
-- আসল denial ডিবাগ: **AWS CloudTrail** (হুবহু রিকোয়েস্ট + সিদ্ধান্ত দেখায়) ও **IAM Policy Simulator** (`aws iam simulate-principal-policy`) — resource ছোঁয়া ছাড়াই কাল্পনিক action মূল্যায়ন করে
-- চাকরিতে `AccessDenied` পেলে: _তুমি কে_ (`sts get-caller-identity`), _কোন policy allow করার কথা_, এবং _explicit deny বা SCP override করছে কি না_ — এই তিনটি দেখো
+- Statement মানে Effect, Action, Resource আর ঐচ্ছিক Condition।
+- Explicit deny beats allow beats implicit deny: অনুমতি না থাকা মানেই denied।
+- Least privilege: যতটা কাজ করে ততটাই সরু Action ও Resource।
+
+</Recap>

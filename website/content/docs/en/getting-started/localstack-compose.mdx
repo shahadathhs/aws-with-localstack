@@ -1,13 +1,20 @@
 ---
 title: Running LocalStack with Docker Compose
 description: The official LocalStack Docker Compose example, pinned and explained — gateway, docker.sock, healthchecks, troubleshooting.
+time: 6 min
+needs:
+  - Docker with the Compose plugin
+learn:
+  - What each line of the compose file does and why
+  - How to start, check and stop LocalStack with make
+  - How to diagnose the common startup failures
 ---
 
-Official reference: <https://docs.localstack.cloud/aws/getting-started/installation/#docker-compose>
+Official reference: [https://docs.localstack.cloud/aws/getting-started/installation/#docker-compose](https://docs.localstack.cloud/aws/getting-started/installation/#docker-compose)
 
-> Also useful: [Docker images](https://docs.localstack.cloud/aws/customization/other-installations/docker-images/) · [Configuration options](https://docs.localstack.cloud/aws/customization/configuration-options/) · [Auth Token](https://docs.localstack.cloud/aws/getting-started/auth-token/)
+Also useful: [Docker images](https://docs.localstack.cloud/aws/customization/other-installations/docker-images/) · [Configuration options](https://docs.localstack.cloud/aws/customization/configuration-options/) · [Auth Token](https://docs.localstack.cloud/aws/getting-started/auth-token/)
 
-## Prerequisites
+## What you need first
 
 Docker with the Compose plugin:
 
@@ -43,17 +50,20 @@ services:
       - '/var/run/docker.sock:/var/run/docker.sock'
 ```
 
-**Important**: the `latest` image (2026.x) **requires a LocalStack account token** — `${LOCALSTACK_AUTH_TOKEN:?}` makes `docker compose up` fail without one. It exits with code 55 ("License activation failed") otherwise.
+<Note title="A token is required">
+  The `latest` image (2026.x) **requires a LocalStack account token**: `${LOCALSTACK_AUTH_TOKEN:?}` makes `docker compose up` fail without one. Without it the container exits with code 55 ("License activation failed").
+</Note>
 
-## What this repo uses (and why it differs slightly)
+## What this repo changes, and why
 
-Our [`compose.yaml`](https://github.com/shahadathhs/aws-with-localstack/blob/main/infra/compose.yaml) is the official example with **one deviation**:
+Our [`compose.yaml`](https://github.com/shahadathhs/aws-with-localstack/blob/main/infra/compose.yaml) (in `infra/`) is the official example with **two deviations**:
 
 | Deviation                                        | Reason                                                                                                                |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
 | `image: localstack/localstack:2026.9.0` (pinned) | Same as `latest` right now, but pinned so the whole team gets the same version. Bump the tag deliberately to upgrade. |
+| `S3_SKIP_SIGNATURE_VALIDATION=${S3_SKIP_SIGNATURE_VALIDATION:-1}` | LocalStack's own default (`1`) skips signature and expiry checks on presigned URLs. Passing it through lets you set `0` in `.env` to enforce them, which the [presigned URLs](/en/s3/04-presigned-urls/) lesson needs. |
 
-Everything else — required token (`${LOCALSTACK_AUTH_TOKEN:?}`), ports, `DEBUG`, `PERSISTENCE`, volumes — matches the official example exactly. We only **add** a healthcheck so `docker compose up --wait` blocks until LocalStack is ready.
+Everything else — required token (`${LOCALSTACK_AUTH_TOKEN:?}`), ports, `DEBUG`, `PERSISTENCE`, volumes — matches the official example exactly. We also **add** a healthcheck so `make up` (which runs `docker compose up -d --wait`) blocks until LocalStack is ready.
 
 ### Getting your token
 
@@ -62,7 +72,7 @@ Everything else — required token (`${LOCALSTACK_AUTH_TOKEN:?}`), ports, `DEBUG
 3. Put it in `.env`: `LOCALSTACK_AUTH_TOKEN=ls-...`
 4. `make up`
 
-## What each part does
+## What each setting does
 
 | Setting             | Why                                                                                                                     |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
@@ -73,23 +83,44 @@ Everything else — required token (`${LOCALSTACK_AUTH_TOKEN:?}`), ports, `DEBUG
 | `docker.sock` mount | **Required for Lambda** — LocalStack spins up sibling containers to execute your functions                              |
 | `volume` mount      | Container-internal state (logs, cache), not your created AWS resources                                                  |
 
-## Start / verify / stop
+## Start, verify and stop
+
+Run these from the repo root. The `Makefile` wraps the compose commands for you:
 
 ```sh
-docker compose up -d --wait        # start (waits for the healthcheck)
-docker ps                          # STATUS should show "Up ... (healthy)"
-curl -s localhost:4566/_localstack/health | python3 -m json.tool
-docker compose logs -f localstack  # tail logs
-docker compose down                # stop
-docker compose down -v && rm -rf ./volume   # full wipe
+make up        # start in the background (waits for the healthcheck)
+docker ps      # STATUS should show "Up ... (healthy)"
+make status    # health check: curl localhost:4566/_localstack/health, pretty-printed
+make logs      # tail LocalStack logs
+make down      # stop
+make clean     # stop and DELETE all data
 ```
 
 Services report `available` until first use, then `running`.
 
+<Destructive title="make clean deletes data">
+  `make clean` runs `docker compose down -v` and then removes the `volume` and `.localstack-data` directories. Everything LocalStack stored is gone.
+</Destructive>
+
+The compose file lives in `infra/`, so a plain `docker compose up` from the repo root fails with "no configuration file provided". If you want to run a raw compose command yourself, use the form the Makefile uses:
+
+```sh
+docker compose --project-directory . -f infra/compose.yaml <command>
+# e.g. up -d --wait | down | logs -f localstack
+```
+
 ## Troubleshooting
 
 - **Container exits (55) with "License activation failed"** → the image is `latest`/2026.x without `LOCALSTACK_AUTH_TOKEN`. Either pin `4.9.0` or provide a token.
-- **`docker compose up` fails with "LOCALSTACK_AUTH_TOKEN not set"** → that's the official `${...:?}` syntax demanding a token; our version defaults it to empty instead.
+- **`make up` fails with "LOCALSTACK_AUTH_TOKEN not set"** → that's the official `${...:?}` syntax demanding a token; this repo's compose file uses it too, so set the token in `.env`.
 - **Port already in use** (4566 or 443) → change the left side of the mapping, or drop the `443` line.
 - **Lambda fails to start** → the `/var/run/docker.sock` mount is missing.
-- **Startup stuck on `health: starting`** → give it ~15s on first boot; then check `docker compose logs localstack`.
+- **Startup stuck on `health: starting`** → give it ~15s on first boot; then check `make logs`.
+
+<Recap>
+
+- One gateway port (`4566`) serves every service, bound to localhost only; the `docker.sock` mount is what makes Lambda work.
+- The compose file in `infra/` is the official example plus a pinned image and a healthcheck, and it needs `LOCALSTACK_AUTH_TOKEN` in `.env`.
+- Use `make up`, `make status`, `make logs`, `make down` and `make clean` from the repo root; `make clean` wipes your data.
+
+</Recap>

@@ -1,13 +1,23 @@
 ---
 title: Storage classes and lifecycle
 description: The shelves inside S3 — Standard to Deep Archive — retrieval economics, and lifecycle rules that move data for you.
+time: 10 min
+needs:
+  - The object model
+  - Versioning
+learn:
+  - "What each storage class trades: price, retrieval and minimum duration"
+  - How a lifecycle rule moves and expires objects by prefix and age
+  - Why LocalStack cannot show a transition happening
 ---
 
-S3 chapter, part 3.
-
-## Concept
+## Seven shelves, one API
 
 Every object carries a `StorageClass` — which _shelf_ the bytes sit on. The API is identical across classes; what changes is the money model: price per GB-month, price per request, and what it costs (in money or time) to read the data back.
+
+<Figure caption="colder shelves: cheaper to keep, costlier or slower to read back">
+  <StorageLadder />
+</Figure>
 
 | Class                          | Access pattern          | Per-GB storage          | Retrieval          | Notes                                                             |
 | ------------------------------ | ----------------------- | ----------------------- | ------------------ | ----------------------------------------------------------------- |
@@ -24,7 +34,7 @@ Two economics traps to internalize:
 1. **Minimum storage duration** — delete an IA object after 5 days and you pay for 30. Deep Archive bills 180 days minimum
 2. **Retrieval is per GB** — archive a petabyte cheaply, then read it all back once, and the retrieval fee dwarfs months of storage savings
 
-### Lifecycle rules — the automation layer
+## Lifecycle rules move data for you
 
 You do not move objects between classes by hand. A **lifecycle configuration** is a bucket-level JSON of rules evaluated daily by S3 itself:
 
@@ -52,12 +62,19 @@ Beyond transitions, rules can also:
 - expire **noncurrent versions** (the billing antidote from [versioning](/en/s3/02-versioning/)): `NoncurrentVersionExpiration: { NoncurrentDays: 30 }`
 - `AbortIncompleteMultipartUpload` after N days — recommended on every bucket, aborts orphaned multipart debris
 
-When two rules could apply to the same object, S3 applies the action that **cheapest/free-est for storage** (transition wins over nothing, free always wins over transition). Note transitions only go _down_ the hotness ladder; Standard→IA→Glacier, never back up — lifecycle cannot "un-archive".
+When two rules could apply to the same object, S3 applies the action that is cheapest/free-est for storage (transition wins over nothing, free always wins over transition). Note transitions only go _down_ the hotness ladder; Standard→IA→Glacier, never back up — lifecycle cannot "un-archive".
 
-## Experiment
+## Set a rule, watch nothing move
 
-Predict: does the transition happen immediately? What does the rule say about objects _not_ under `logs/`?
+<Lab title="a lifecycle rule on logs/" time="~5 min">
+  <Predict>
+    Does the transition happen immediately? What does the rule say about objects _not_ under `logs/`?
 
+    <Answer>
+      **No, not immediately.** Transitions are evaluated daily, so nothing moves on day 0. The `Filter` limits the rule to the `logs/` prefix, so it does not apply to objects outside it.
+    </Answer>
+  </Predict>
+  <Run>
 ```sh
 export AWS_PROFILE=localstack
 aws s3api put-bucket-lifecycle-configuration --bucket ph1-bucket --lifecycle-configuration '{
@@ -78,14 +95,38 @@ Read back the rule and confirm the filter scope. Then check an object's current 
 ```sh
 echo data > /tmp/x.txt
 aws s3 cp /tmp/x.txt s3://ph1-bucket/logs/x.txt
-aws s3api head-object --bucket ph1-bucket --key logs/x.txt --query StorageClass
+aws s3api list-objects-v2 --bucket ph1-bucket --prefix logs/ --query 'Contents[0].StorageClass'
 # -> "STANDARD"      <- transitions are evaluated daily; nothing moves on day 0
 ```
+  </Run>
+  <Verify>
+    - `get-bucket-lifecycle-configuration` returns the `logs-aging` rule with `Prefix: logs/`
+    - `list-objects-v2` reports `"STANDARD"` for `logs/x.txt` (`head-object` returns no `StorageClass` for Standard objects, on S3 as in LocalStack)
+  </Verify>
+</Lab>
 
-LocalStack stores and serves the configuration but does **not simulate time passing** — the lesson is the rule model: per-prefix filters, day thresholds, and that `StorageClass` on the object is the thing changing.
+<Note title="In LocalStack">
+  LocalStack stores and serves the configuration but does **not simulate time passing** — the lesson is the rule model: per-prefix filters, day thresholds, and that `StorageClass` on the object is the thing changing.
+</Note>
 
-## On real AWS
+## What changes with a bill attached
 
-- Pricing lives at [aws.amazon.com/s3/pricing](https://aws.amazon.com/s3/pricing/) — study the Standard vs IA vs Glacier-IR columns for one region until the retrieval-fee pattern is obvious
-- **Intelligent-Tiering** is the default recommendation for data lakes with unknown access patterns; its monitoring fee makes it wrong for millions of tiny objects
-- Ask in every design review: "what reads this data, how often, and who pays if that guess is wrong?"
+<RealAws cost title="Read the pricing page">
+  Pricing lives at [aws.amazon.com/s3/pricing](https://aws.amazon.com/s3/pricing/) — study the Standard vs IA vs Glacier-IR columns for one region until the retrieval-fee pattern is obvious.
+</RealAws>
+
+<RealAws title="Intelligent-Tiering is not for everything">
+  **Intelligent-Tiering** is the default recommendation for data lakes with unknown access patterns; its monitoring fee makes it wrong for millions of tiny objects.
+</RealAws>
+
+<Note title="Ask in every design review">
+  "What reads this data, how often, and who pays if that guess is wrong?"
+</Note>
+
+<Recap>
+
+- A storage class trades storage price against retrieval fee, retrieval time and minimum duration.
+- A lifecycle rule filters by prefix and moves or expires objects by age, always downward.
+- LocalStack keeps the rule but does not simulate time: nothing moves on day 0.
+
+</Recap>

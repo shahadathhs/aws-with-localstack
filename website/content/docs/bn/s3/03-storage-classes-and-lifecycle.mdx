@@ -1,13 +1,23 @@
 ---
 title: স্টোরেজ ক্লাস ও লাইফসাইকেল
 description: S3-র তাকগুলো — Standard থেকে Deep Archive — retrieval অর্থনীতি, এবং lifecycle rule যা নিজেই ডেটা সরায়।
+time: ১০ মিনিট
+needs:
+  - অবজেক্ট মডেল
+  - ভার্সনিং
+learn:
+  - "প্রতিটি storage class কী বদল করে: দাম, retrieval ও ন্যূনতম মেয়াদ"
+  - Lifecycle rule কীভাবে prefix ও বয়স দেখে object সরায় বা expire করে
+  - LocalStack কেন transition ঘটতে দেখাতে পারে না
 ---
 
-S3 অধ্যায়, পর্ব ৩।
-
-## কনসেপ্ট
+## সাত তাক, এক API
 
 প্রতিটি object `StorageClass` বহন করে — bytes কোন _তাকে_ আছে। API সব ক্লাসে এক; বদলায় অর্থের হিসাব: প্রতি GB-মাসে দাম, প্রতি রিকোয়েস্টে দাম, আর ডেটা ফেরত আনতে কী লাগে (টাকা বা সময়)।
+
+<Figure caption="যত ঠান্ডা তাক, রাখা তত সস্তা; ফেরত আনা তত ব্যয়বহুল বা ধীর">
+  <StorageLadder />
+</Figure>
 
 | ক্লাস                          | অ্যাক্সেস প্যাটার্ন  | GB-স্টোরেজ            | Retrieval        | নোট                                                   |
 | ------------------------------ | -------------------- | --------------------- | ---------------- | ----------------------------------------------------- |
@@ -24,7 +34,7 @@ S3 অধ্যায়, পর্ব ৩।
 1. **ন্যূনতম স্টোরেজ মেয়াদ** — IA object ৫ দিনে ডিলিট করলেও বিল হয় ৩০ দিনের। Deep Archive-এর ন্যূনতম ১৮০ দিন
 2. **Retrieval প্রতি GB** — পেটাবাইট সস্তায় archive করো, একবার সব পড়তে গেলে retrieval ফি মাসের স্টোরেজ স্যাভিংসকে হার মানায়
 
-### Lifecycle rule — অটোমেশন স্তর
+## Lifecycle rule নিজেই ডেটা সরায়
 
 Object হাতে সরানো হয় না। **Lifecycle configuration** হলো bucket-স্তরের JSON, S3 নিজেই প্রতিদিন মূল্যায়ন করে:
 
@@ -54,10 +64,17 @@ Rule আরও করতে পারে:
 
 দুটি rule একই object-এ লাগলে S3 যেটি স্টোরেজে **সবচেয়ে সস্তা/ফ্রি** সেটি প্রয়োগ করে। Transition শুধু _নিচের_ দিকে: Standard→IA→Glacier — lifecycle "un-archive" করতে পারে না।
 
-## এক্সপেরিমেন্ট
+## Rule বসাও, কিছুই সরে না
 
-অনুমান: transition কি সঙ্গে সঙ্গে হয়? rule `logs/`-এর বাইরের object-দের কী করে?
+<Lab title="logs/-এ একটি lifecycle rule" time="~৫ মিনিট">
+  <Predict>
+    Transition কি সঙ্গে সঙ্গে হয়? rule `logs/`-এর বাইরের object-দের কী করে?
 
+    <Answer>
+      **না, সঙ্গে সঙ্গে নয়।** Transition দৈনিক মূল্যায়ন হয়, তাই শূন্য দিনে কিছু সরে না। `Filter` rule-কে `logs/` prefix-এ সীমাবদ্ধ করে, তাই এর বাইরের object-এ এটি লাগে না।
+    </Answer>
+  </Predict>
+  <Run>
 ```sh
 export AWS_PROFILE=localstack
 aws s3api put-bucket-lifecycle-configuration --bucket ph1-bucket --lifecycle-configuration '{
@@ -78,14 +95,38 @@ Rule পড়ে ফিল্টারের সীমা নিশ্চিত
 ```sh
 echo data > /tmp/x.txt
 aws s3 cp /tmp/x.txt s3://ph1-bucket/logs/x.txt
-aws s3api head-object --bucket ph1-bucket --key logs/x.txt --query StorageClass
+aws s3api list-objects-v2 --bucket ph1-bucket --prefix logs/ --query 'Contents[0].StorageClass'
 # -> "STANDARD"      <- transition দৈনিক মূল্যায়ন হয়; শূন্য দিনে কিছু সরে না
 ```
+  </Run>
+  <Verify>
+    - `get-bucket-lifecycle-configuration` `Prefix: logs/`-সহ `logs-aging` rule ফেরত দেয়
+    - `list-objects-v2` `logs/x.txt`-এর জন্য `"STANDARD"` দেখায় (Standard object-এ `head-object` কোনো `StorageClass` ফেরত দেয় না — S3-এও, LocalStack-এও)
+  </Verify>
+</Lab>
 
-LocalStack কনফিগ রাখে ও সার্ভ করে, কিন্তু **সময় প্রবাহিত করে না** — শেখার বিষয় হলো rule মডেল: prefix ফিল্টার, দিনের সীমা, আর object-এর `StorageClass`-ই বদলানো জিনিস।
+<Note title="LocalStack-এ">
+  LocalStack কনফিগ রাখে ও সার্ভ করে, কিন্তু **সময় প্রবাহিত করে না** — শেখার বিষয় হলো rule মডেল: prefix ফিল্টার, দিনের সীমা, আর object-এর `StorageClass`-ই বদলানো জিনিস।
+</Note>
 
-## রিয়েল AWS-এ
+## বিল যুক্ত হলে যা বদলায়
 
-- দাম: [aws.amazon.com/s3/pricing](https://aws.amazon.com/s3/pricing/) — এক region-এর Standard vs IA vs Glacier-IR কলাম পড়ে retrieval-ফি প্যাটার্নটা চোখে বসাও
-- অজানা access pattern-এর data lake-এ **Intelligent-Tiering** ডিফল্ট সুপারিশ; লাখো ছোট object-এ monitoring ফি-র কারণে অনুপযুক্ত
-- প্রতিটি ডিজাইন রিভিউ-র প্রশ্ন: "এই ডেটা কে পড়ে, কত ঘন ঘন, ভুল হলে কে দাম দেয়?"
+<RealAws cost title="দামের পাতা পড়ো">
+  দাম: [aws.amazon.com/s3/pricing](https://aws.amazon.com/s3/pricing/) — এক region-এর Standard vs IA vs Glacier-IR কলাম পড়ে retrieval-ফি প্যাটার্নটা চোখে বসাও।
+</RealAws>
+
+<RealAws title="Intelligent-Tiering সব জায়গায় নয়">
+  অজানা access pattern-এর data lake-এ **Intelligent-Tiering** ডিফল্ট সুপারিশ; লাখো ছোট object-এ monitoring ফি-র কারণে অনুপযুক্ত।
+</RealAws>
+
+<Note title="প্রতিটি ডিজাইন রিভিউতে জিজ্ঞেস করো">
+  "এই ডেটা কে পড়ে, কত ঘন ঘন, ভুল হলে কে দাম দেয়?"
+</Note>
+
+<Recap>
+
+- Storage class স্টোরেজের দামের সাথে retrieval ফি, retrieval সময় ও ন্যূনতম মেয়াদের বিনিময় ঘটায়।
+- Lifecycle rule prefix দিয়ে ফিল্টার করে বয়স অনুযায়ী object সরায় বা expire করে, সবসময় নিচের দিকে।
+- LocalStack rule রাখে কিন্তু সময় প্রবাহিত করে না: শূন্য দিনে কিছু সরে না।
+
+</Recap>

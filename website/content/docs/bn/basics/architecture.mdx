@@ -1,55 +1,50 @@
 ---
 title: LocalStack কীভাবে কাজ করে — মেন্টাল মডেল
 description: একটি গেটওয়ে পোর্ট, নকল অ্যাকাউন্ট রাউটিং, DNS ট্রিক ও sibling Lambda container — LocalStack কীভাবে AWS নকল করে।
+time: ৫ মিনিট
+needs:
+  - AWS CLI বেসিক — কনফিগারেশনের থিওরি
+learn:
+  - একটি পোর্ট কীভাবে সব AWS সার্ভিস সার্ভ করে
+  - নকল account ID ও region আসলে কী
+  - Lambda-র docker.sock কেন লাগে এবং state কোথায় থাকে
 ---
 
-অফিসিয়াল রেফারেন্স:
-[ইনস্টলেশন](https://docs.localstack.cloud/aws/getting-started/installation/) ·
-[সংযোগ / AWS CLI](https://docs.localstack.cloud/aws/connecting/aws-cli/) ·
-[নেটওয়ার্কিং](https://docs.localstack.cloud/aws/customization/networking/) ·
-[Credentials](https://docs.localstack.cloud/aws/connecting/credentials/)
+অফিসিয়াল রেফারেন্স: [ইনস্টলেশন](https://docs.localstack.cloud/aws/getting-started/installation/) · [সংযোগ / AWS CLI](https://docs.localstack.cloud/aws/connecting/aws-cli/) · [নেটওয়ার্কিং](https://docs.localstack.cloud/aws/customization/networking/) · [Credentials](https://docs.localstack.cloud/aws/connecting/credentials/)
 
-## বড় ছবি
+## একই API, ভিন্ন গন্তব্য
 
 LocalStack **AWS API প্রোটোকল** রাখে, শুধু **গন্তব্য** বদলায়। টুলগুলো পার্থক্য টের পায় না — তাই যেকোনো AWS CLI, SDK বা Terraform কোড অপরিবর্তিত থেকে `localhost:4566`-এ কাজ করে।
 
-```
-                        তোমার মেশিন (সবকিছু এখানেই থাকে)
-┌──────────────────────────────────────────────────────────────────┐
-│                                                                  │
-│   $ aws --profile localstack s3 ls                               │
-│        │                                                         │
-│        │ 1. profile লুকআপ: ~/.aws/config                         │
-│        │    → endpoint_url = localhost.localstack.cloud:4566     │
-│        │    → credentials  = test/test (কখনো যাচাই হয় না!)       │
-│        ▼                                                         │
-│   localhost.localstack.cloud  ──DNS──►  127.0.0.1                │
-│   (এই পাবলিক DNS wildcard ইচ্ছা করেই LocalStack-এর)              │
-│        │                                                         │
-│        │ 2. সাধারণ HTTP (ইন্টারনেট নেই, TLS নেই, আসল auth নেই)   │
-│        ▼                                                         │
-│   ┌────────────── LOCALSTACK CONTAINER ────────────────────┐     │
-│   │                                                        │     │
-│   │   EDGE GATEWAY  :4566   ← এক পোর্ট = সব সার্ভিস         │     │
-│   │        │                                               │     │
-│   │        │ 3. "কোন সার্ভিস?" — পড়ে যেখান থেকে:           │     │
-│   │        │      • URL path       /demo-queue             │     │
-│   │        │      • hostname       s3.localhost...         │     │
-│   │        │      • SigV4 সিগনেচার + headers               │     │
-│   │        ▼                                               │     │
-│   │   ┌─────────┬─────────┬──────────┬──────────┐          │     │
-│   │   │   S3    │   SQS   │ DynamoDB │  Lambda  │  ...     │     │
-│   │   │bucket   │queue +  │table +   │    │      │          │     │
-│   │   │+ ফাইল   │message  │item      │    │4.    │          │     │
-│   │   └─────────┴─────────┴──────────┘    ▼      │          │     │
-│   │   সব state কন্টেইনার মেমরিতে            docker.sock     │     │
-│   │   (`make clean`-এ মুছে যায়)        → তোমার ফাংশন      │     │
-│   │                                    sibling ctr-এ চলে  │     │
-│   └────────────────────────────────────────────────────────┘     │
-└──────────────────────────────────────────────────────────────────┘
+<Figure caption="সবকিছু তোমার মেশিনেই থাকে"><Gateway /></Figure>
+
+`aws --profile localstack s3 ls` কমান্ডের ধাপে ধাপে যাত্রা:
+
+```text
+$ aws --profile localstack s3 ls
+
+1. profile লুকআপ: ~/.aws/config
+   → endpoint_url = localhost.localstack.cloud:4566
+   → credentials  = test/test (কখনো যাচাই হয় না!)
+   localhost.localstack.cloud ──DNS──► 127.0.0.1
+   (এই পাবলিক DNS wildcard ইচ্ছা করেই LocalStack-এর)
+
+2. সাধারণ HTTP (ইন্টারনেট নেই, TLS নেই, আসল auth নেই)
+
+3. EDGE GATEWAY :4566 (এক পোর্ট = সব সার্ভিস) জিজ্ঞেস করে "কোন সার্ভিস?"
+   এবং পড়ে যেখান থেকে:
+     • URL path       /demo-queue
+     • hostname       s3.localhost...
+     • SigV4 সিগনেচার + headers
+
+4. Lambda: docker.sock দিয়ে sibling container-এ তোমার ফাংশন চালায়
 ```
 
-## নকল অ্যাকাউন্ট ও region — এগুলো নিছক _লেবেল_
+সব state কন্টেইনার মেমরিতে থাকে (`make clean`-এ মুছে যায়)।
+
+## নকল অ্যাকাউন্ট ও region
+
+এগুলো নিছক _লেবেল_:
 
 |            | রিয়েল AWS                                                 | LocalStack                                                 |
 | ---------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
@@ -59,6 +54,10 @@ LocalStack **AWS API প্রোটোকল** রাখে, শুধু **গ
 | Auth       | IAM, policy, MFA, সিগনেচার যাচাই                           | কিছুই না — যেকোনো credential চলে (`test/test` প্রচলিত)     |
 
 `test/test` credential আছে শুধু কারণ AWS CLI credential ছাড়া রিকোয়েস্ট পাঠাতেই রাজি নয়। রিকোয়েস্ট তবুও SigV4-signed — কিন্তু কেউ সিগনেচার যাচাই করে না, গেটওয়ে তা থেকে শুধু service/region পড়ে নেয়।
+
+<RealAws title="এখানে কিছুই যাচাই হয় না">
+  রিয়েল AWS-এ IAM, policy, MFA ও সিগনেচার যাচাই ঠিক করে কে কী করতে পারবে। LocalStack যেকোনো credential মেনে নেয়, তাই এখানে চলা কমান্ড রিয়েল AWS-এ তবুও denied হতে পারে।
+</RealAws>
 
 ## একটি গেটওয়ে পোর্ট
 
@@ -76,8 +75,12 @@ LocalStack **AWS API প্রোটোকল** রাখে, শুধু **গ
 
 ## State ও জীবনকাল
 
-- Bucket, queue, table... কন্টেইনার **মেমরিতে** থাকে — `docker compose restart`-এ টিকে, container মরলে মরে, `make clean` সব মুছে দেয়
-- সম্পূর্ণ রিস্টার্ট জুড়ে persistence হলো Pro ফিচার (`PERSISTENCE` env — এই রিপোর compose-এ আছে, ফ্রি টিয়ারে নিষ্ক্রিয়)
+- Bucket, queue, table... কন্টেইনার **মেমরিতে** থাকে — `make restart`-এ টিকে, container মরলে মরে, `make clean` সব মুছে দেয়
+- সম্পূর্ণ রিস্টার্ট জুড়ে persistence হলো Pro ফিচার (`PERSISTENCE` env — এই রিপোর compose-এ ডিফল্ট `0`, ফ্রি টিয়ারে নিষ্ক্রিয়)
+
+<Note title="LocalStack-এ">
+  `make clean` container বন্ধ করে সব ডেটা মুছে দেয়। এরপর bucket, queue ও table আবার বানাতে হবে।
+</Note>
 
 ## রিয়েল বনাম নকল, স্তরে স্তরে
 
@@ -89,3 +92,11 @@ LocalStack **AWS API প্রোটোকল** রাখে, শুধু **গ
 | বিলিং      | প্রতি রিকোয়েস্টে খরচ        | বিনামূল্যে                                    |
 
 পূর্বশর্ত পাঠ: [AWS CLI বেসিক](/bn/basics/aws-cli/) — LocalStack যে profile/endpoint মেকানিজমের ওপর দাঁড়িয়ে তার ব্যাখ্যা।
+
+<Recap>
+
+- LocalStack AWS API প্রোটোকল রাখে, গন্তব্য বদলায়: `:4566`-এর একটি গেটওয়ে path, hostname ও সিগনেচার দেখে রাউট করে।
+- account ID `000000000000` আর region নিছক লেবেল, কোনো credential কখনো যাচাই হয় না।
+- Lambda `docker.sock` দিয়ে sibling container-এ চলে; সব state কন্টেইনার মেমরিতে, `make clean` তা মুছে দেয়।
+
+</Recap>

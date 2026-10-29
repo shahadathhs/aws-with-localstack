@@ -1,15 +1,18 @@
 ---
 title: Policies and evaluation
 description: Policy JSON anatomy, the evaluation order, explicit deny, and least privilege — how AWS actually decides allow or deny.
+time: 9 min
+needs:
+  - Principals, users, roles
+learn:
+  - How to read one policy statement field by field
+  - Why explicit deny beats allow beats implicit deny
+  - What least privilege asks of Action and Resource
 ---
 
-IAM chapter, part 2.
-
-## Concept
+## One statement, read as a sentence
 
 A **policy** is a JSON document listing permissions. Everything IAM decides comes from these documents; there is no other magic.
-
-### Anatomy — one statement, read as a sentence
 
 ```json
 {
@@ -26,6 +29,8 @@ A **policy** is a JSON document listing permissions. Everything IAM decides come
 }
 ```
 
+<Figure caption="one statement, field by field"><PolicyStatement /></Figure>
+
 - **Effect** — `Allow` or `Deny`. There is no "maybe"
 - **Action** — service-prefixed API operations (`s3:GetObject`, `dynamodb:PutItem`, `sts:AssumeRole`). Wildcards allowed: `s3:Get*`
 - **Resource** — ARNs it applies to. Some actions are resourceless (`s3:ListAllMyBuckets` needs `Resource: "*"`)
@@ -33,7 +38,7 @@ A **policy** is a JSON document listing permissions. Everything IAM decides come
 
 Note `s3:ListBucket` targets the _bucket_ ARN, while `s3:GetObject` targets _object_ ARNs (`.../todo/*`) — listing and reading are different actions on different resources, the classic trap in S3 policies.
 
-### Policy flavors — where documents can live
+## Where policies live
 
 | Type                | Attached to                                     | Example                                                                  |
 | ------------------- | ----------------------------------------------- | ------------------------------------------------------------------------ |
@@ -43,13 +48,15 @@ Note `s3:ListBucket` targets the _bucket_ ARN, while `s3:GetObject` targets _obj
 | SCP                 | the whole account (organizations)               | company-level guardrails                                                 |
 | Trust policy        | a role — _who may assume it_                    | the Lambda example from [principals](/en/iam/01-principals-users-roles/) |
 
-### The evaluation — one order, no exceptions
+## One order, no exceptions
 
 For every request, AWS collects every policy applying to the principal _and_ the resource, then:
 
 1. Any **explicit `Deny`** → **DENY.** The end. Nothing overrides it
 2. Otherwise, at least one **explicit `Allow`** → **ALLOW**
 3. Otherwise → **implicit deny** — **DENY** (no document even mentions this action)
+
+<Figure caption="explicit deny, then explicit allow, then implicit deny"><IamFlow /></Figure>
 
 Memorize the three-word form: **explicit deny beats allow beats implicit deny.** The subtle daily-payoff is #3: absence of permission is denial — "it should work" is not a policy.
 
@@ -59,10 +66,26 @@ Same-account vs cross-account changes one thing: cross-account needs an allow on
 
 Write the narrowest Action list and the narrowest Resource ARNs that make the thing work. `Action: "*", Resource: "*"` is how breaches become disasters. In practice you iterate: start slightly wider, enable **IAM Access Analyzer** policy generation (it observes actual usage and proposes the minimal policy), tighten.
 
-## Experiment
+## Simulate it in your head
 
-LocalStack stores IAM policies but enforces nothing — the experiment is reading, writing, and _simulating in your head_:
+<Note title="In LocalStack">
+  LocalStack stores IAM policies but enforces nothing — the experiment is reading, writing, and _simulating in your head_.
+</Note>
 
+<Lab title="allow, explicit deny, implicit deny" time="~6 min">
+  <Predict>
+    With the `TodoRead` policy below attached to `report-bot`, write down allow / explicit-deny / implicit-deny for each:
+
+    1. `report-bot` runs `s3:GetObject` on `ph1-bucket/todo/a.txt`
+    2. `report-bot` runs `s3:GetObject` on `ph1-bucket/docs/notes/today.txt`
+    3. `report-bot` runs `s3:PutObject` on `ph1-bucket/todo/b.txt`
+    4. Someone adds a second statement: `Effect: Deny, Action: s3:GetObject, Resource: ph1-bucket/todo/secret/*` — now `todo/secret/k.txt`?
+
+    <Answer>
+      1 allow (statement matches) · 2 implicit deny (ListBucket is allowed but GetObject on that prefix is nowhere) · 3 implicit deny (PutObject never mentioned) · 4 explicit deny, even though the allow still matches — deny wins.
+    </Answer>
+  </Predict>
+  <Run>
 ```sh
 export AWS_PROFILE=localstack
 
@@ -79,17 +102,27 @@ aws iam put-user-policy --user-name report-bot --policy-name TodoRead --policy-d
 aws iam list-user-policies --user-name report-bot
 aws iam get-user-policy --user-name report-bot --policy-name TodoRead
 ```
+  </Run>
+  <Verify>
+    - `list-user-policies` shows `TodoRead` for `report-bot`
+    - `get-user-policy` returns the policy document you stored
+  </Verify>
+</Lab>
 
-Then quiz yourself (write down allow / explicit-deny / implicit-deny for each):
+## What changes on real AWS
 
-1. `report-bot` runs `s3:GetObject` on `ph1-bucket/todo/a.txt`
-2. `report-bot` runs `s3:GetObject` on `ph1-bucket/docs/notes/today.txt`
-3. `report-bot` runs `s3:PutObject` on `ph1-bucket/todo/b.txt`
-4. Someone adds a second statement: `Effect: Deny, Action: s3:GetObject, Resource: ph1-bucket/todo/secret/*` — now `todo/secret/k.txt`?
+<RealAws title="Debug real denials">
+  Use **AWS CloudTrail** (shows the exact request + decision) and the **IAM Policy Simulator** (`aws iam simulate-principal-policy`) — it evaluates hypothetical actions without touching resources.
+</RealAws>
 
-Answers: 1 allow (statement matches) · 2 implicit deny (ListBucket is allowed but GetObject on that prefix is nowhere) · 3 implicit deny (PutObject never mentioned) · 4 explicit deny, even though the allow still matches — deny wins.
+<Note title="When you hit AccessDenied">
+  In a job: check _who you are_ (`sts get-caller-identity`), _which policy should allow it_, and _whether an explicit deny or an SCP is overriding_.
+</Note>
 
-## On real AWS
+<Recap>
 
-- Debug real denials with **AWS CloudTrail** (shows the exact request + decision) and the **IAM Policy Simulator** (`aws iam simulate-principal-policy`) — it evaluates hypothetical actions without touching resources
-- When you hit `AccessDenied` in a job: check _who you are_ (`sts get-caller-identity`), _which policy should allow it_, and _whether an explicit deny or an SCP is overriding_
+- A statement is Effect, Action, Resource and an optional Condition.
+- Explicit deny beats allow beats implicit deny: no permission means denied.
+- Least privilege: the narrowest Action and Resource that make it work.
+
+</Recap>

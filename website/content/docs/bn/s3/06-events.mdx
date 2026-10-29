@@ -1,0 +1,126 @@
+---
+title: ইভেন্ট নোটিফিকেশন
+description: S3 একজন actor হিসেবে — object তৈরি, পরিবর্তন বা মুছে গেলে SQS, SNS বা Lambda ট্রিগার হয়। স্টোরেজ থেকে সার্ভারলেসের সেতু।
+time: ৯ মিনিট
+needs:
+  - অবজেক্ট মডেল
+  - Docker Compose দিয়ে LocalStack চালানো
+learn:
+  - একটি আপলোড কীভাবে Lambda, SQS, SNS বা EventBridge-এ ছড়ায়
+  - Prefix ও suffix ফিল্টার কীভাবে ঠিক করে কোন event যাবে
+  - Consumer কেন idempotent হতে হয়
+---
+
+## নিষ্ক্রিয় স্টোরেজ থেকে actor
+
+এতক্ষণ S3 ছিল নিষ্ক্রিয়: তুমি চাও, সে দেয়। **Event notification** এটিকে actor বানায় — object তৈরি, অপসারণ বা restore হলে S3 নিজেই message ঠেলে দেয়:
+
+<Figure caption="একটি আপলোড, চার ধরনের টার্গেট পর্যন্ত"><EventFlow /></Figure>
+
+| টার্গেট         | রূপ                        | কখন                                                                  |
+| --------------- | -------------------------- | -------------------------------------------------------------------- |
+| **Lambda**      | event-ই invocation payload | আপলোডের সঙ্গে সঙ্গে প্রসেস (thumbnail, virus scan) — Phase 2-র বিষয় |
+| **SQS queue**   | message হিসেবে event       | fan-in: অনেক আপলোড, worker pool নিজের গতিতে খায়                     |
+| **SNS topic**   | event broadcast            | একসাথে অনেক subscriber-এ fan-out                                     |
+| **EventBridge** | সমৃদ্ধ ফিল্টার/রাউটিং      | অনেক rule-এ জটিল routing                                             |
+
+Event আসলে কী — _কী ঘটেছে_ বলা JSON:
+
+```json
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-06T12:00:00.000Z",
+      "eventName": "ObjectCreated:Put",
+      "s3": {
+        "bucket": { "name": "ph1-bucket" },
+        "object": { "key": "uploads/report.pdf", "size": 1048576, "etag": "..." }
+      }
+    }
+  ]
+}
+```
+
+Consumer-রা **ফাইল নয়, নোটিফিকেশন** পায় — message-এর `key` বলে দেয় কী গিয়ে আনতে হবে।
+
+## কনফিগারেশনের নিয়ম
+
+- ফিল্টার: **prefix** (`uploads/`), **suffix** (`.pdf`) দিয়ে — "ছবি" এক pipeline, "ইনভয়েস" আরেকটি — এভাবেই route হয়
+- প্রতি bucket-এ ঠিক এক notification config, সর্বোচ্চ ১০০ rule
+- Delivery **at-least-once**: duplicate আসবেই — consumer idempotent ডিজাইন করতে হবে (এই সুর এখান থেকে শুরু, AWS-জুড়ে থাকবে)
+- S3 কিছুকাল retry করে; destination বারবার ব্যর্থ হলে event হারাতে পারে — আসল pipeline টার্গেট DLQ দিয়ে রক্ষা করে
+
+## Bucket-কে queue-র সঙ্গে জোড়া
+
+Notification কনফিগে _বিদ্যমান_ টার্গেট লাগে (LocalStack ARN-এর গঠন যাচাই করে)। সস্তা টার্গেট হলো [ডেমো](/bn/getting-started/localstack-compose/)-র সেই SQS।
+
+<Lab title="ফিল্টার করে queue-তে notify" time="~৬ মিনিট">
+  <Predict>
+    ফিল্টার prefix `uploads/` আর suffix `.txt` থাকলে `uploads/match.txt`, `uploads/nope.pdf` ও `other/match.txt` আপলোড করলে queue-তে কয়টি message পৌঁছাবে?
+
+    <Answer>
+      **দুটি।** প্রথমে একটি `s3:TestEvent` (notification সেট করার সঙ্গে সঙ্গেই S3 নিজে পাঠায়), তারপর `uploads/match.txt`-এর জন্য একটি event; শেষটির body-তে উপরের JSON event-ই। বাদ পড়া দুটি আপলোড কিছুই পাঠায় না।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+QUEUE_URL=$(aws sqs create-queue --queue-name s3-events --query 'QueueUrl' --output text)
+QUEUE_ARN=$(aws sqs get-queue-attributes --queue-url "$QUEUE_URL" \
+  --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
+
+aws s3api put-bucket-notification-configuration --bucket ph1-bucket \
+  --notification-configuration '{
+    "QueueConfigurations": [{
+      "QueueArn": "'"$QUEUE_ARN"'",
+      "Events": ["s3:ObjectCreated:*"],
+      "Filter": { "Key": { "FilterRules": [
+        { "Name": "prefix", "Value": "uploads/" },
+        { "Name": "suffix", "Value": ".txt" }
+      ]}}
+    }]
+  }'
+```
+
+ফিল্টারটি উচ্চস্বরে পড়ো: _শুধু `uploads/`-এর অন্তর্গত, `.txt`-এ শেষ হওয়া নতুন object_। তিনটি কেস টেস্ট করো:
+
+```sh
+echo data > /tmp/x.txt
+aws s3 cp /tmp/x.txt s3://ph1-bucket/uploads/match.txt          # notify হবে
+aws s3 cp /tmp/x.txt s3://ph1-bucket/uploads/nope.pdf          # ভুল suffix
+aws s3 cp /tmp/x.txt s3://ph1-bucket/other/match.txt           # ভুল prefix
+
+QUEUE_URL=$(aws sqs get-queue-url --queue-name s3-events --query 'QueueUrl' --output text)
+aws sqs receive-message --queue-url "$QUEUE_URL" --max-number-of-messages 10 --wait-time-seconds 3
+```
+  </Run>
+  <Verify>
+    - **দুটি** message: একটি `s3:TestEvent` (notification সেট করার সময় S3 পাঠায়) আর একটির body-তে উপরের JSON event-ই — `key: "uploads/match.txt"`
+    - বাদ পড়া দুটি আপলোড কিছুই পাঠায় না
+  </Verify>
+</Lab>
+
+তুমি এইমাত্র প্রতিটি "ফাইল এলে কিছু করো" সিস্টেমের কঙ্কাল বানিয়ে ফেলেছ।
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws title="Lambda-র resource policy লাগে">
+  প্রথম Lambda ওয়্যার করলে রহস্যজনক ব্যর্থতা আসবে যদি Lambda-র _resource policy_ S3-কে invoke করতে না দেয় — `aws lambda add-permission` দিয়ে AWS সেটি তৈরি করে দেয় (Phase 2-র পাঠ)।
+</RealAws>
+
+<Note title="Event ঝড়">
+  একই key ডিলিট/রি-আপলোডে আরও event (`ObjectRemoved`, `ObjectCreated:Copy`) — consumer-কে event ঝড় সহ্য করতে হয়, যেমন bulk restore।
+</Note>
+
+<Note title="Multipart আপলোড">
+  বড় multipart আপলোডে `ObjectCreated:CompleteMultipartUpload` শেষেই আসে — consumer কখনো টুকরোগুলো দেখে না।
+</Note>
+
+<Recap>
+
+- Notification বলে দেয় কী ঘটেছে; object-টি consumer নিজে গিয়ে আনে।
+- Prefix ও suffix ফিল্টার event route করে, আর delivery at-least-once, তাই consumer idempotent ডিজাইন করো।
+- Queue হলো চেষ্টা করার সস্তা টার্গেট, আর একই রূপ Phase 2-তে Lambda-কে খাওয়ায়।
+
+</Recap>
