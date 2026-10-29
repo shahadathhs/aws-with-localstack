@@ -37,21 +37,19 @@ IAM:
 
 ## Phase 2 — Compute: Lambda
 
-1. [The execution model](/en/lambda/01-execution-model/) — a handler in a sandbox; cold vs warm; concurrency as separate instances; timeout and memory
-2. [The event object](/en/lambda/02-the-event-object/) — why the function was invoked; manual vs S3 events; synchronous vs asynchronous calls; logs
-3. [SQS triggers](/en/lambda/03-sqs-triggers/) — event source mappings; batch size; reporting partial failures; retries without end
+10. [The execution model](/en/lambda/01-execution-model/) — a handler in a sandbox; cold vs warm; concurrency as separate instances; timeout and memory
+11. [The event object](/en/lambda/02-the-event-object/) — why the function was invoked; manual vs S3 events; synchronous vs asynchronous calls; logs
+12. [SQS triggers](/en/lambda/03-sqs-triggers/) — event source mappings; batch size; reporting partial failures; retries without end
 
 Experiments: deploy a Lambda and invoke it manually; prove warmth with a global counter; wire a bucket (upload → Lambda); consume SQS messages in a batch and retry only the poisoned one.
 
 ## Phase 3 — The serverless chain: API Gateway → Lambda → DynamoDB
 
-- API Gateway: routes, stages, the HTTP → event-JSON translation, throttling
-- DynamoDB paradigm shift: **fast only by key** — partition key picks the shard; design tables around queries first
-- Partition key + sort key; GSIs / LSIs as paid alternate query views
-- RCU / WCU: throughput is purchased per table — the origin of "DynamoDB bills per access"
-- Why DynamoDB modeling ≠ MongoDB modeling: no joins, no ad-hoc queries
+13. [DynamoDB is fast by key](/en/serverless/01-dynamodb-keys/) — partition and sort keys; query vs scan; secondary indexes
+14. [API Gateway turns HTTP into an event](/en/serverless/02-api-gateway/) — routes, stages, the proxy contract; why 403 and 502
+15. [The tasks API](/en/serverless/03-tasks-api/) — the whole chain driven with curl; idempotent deletes
 
-Experiments: build a tasks API (`POST/GET/DELETE /tasks`) and hit it with curl; query by key vs full scan; add a GSI and query by a non-key attribute.
+Everything here uses the REST API flavour of API Gateway, because that is what LocalStack runs. Experiments: build a tasks API (`POST/GET/DELETE /tasks`) and hit it with curl; query by key vs full scan; add a GSI and query by a non-key attribute.
 
 ## Phase 4 — Messaging: SQS (deep) + SNS + EventBridge
 

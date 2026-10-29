@@ -1,0 +1,198 @@
+---
+title: The tasks API
+description: Put the three pieces together. A request goes through API Gateway to a Lambda function that reads and writes a DynamoDB table, and you drive it with curl.
+time: 14 min
+needs:
+  - DynamoDB is fast by key
+  - API Gateway turns HTTP into an event
+learn:
+  - How API Gateway, Lambda and DynamoDB fit into one request path
+  - How one handler serves several routes by reading the method
+  - Why a delete is safe to repeat
+---
+
+## The chain
+
+A request to `POST /tasks` now travels through three managed services, and you run none of them:
+
+```text
+curl --> API Gateway --> Lambda (handler) --> DynamoDB
+            routes         your logic           the data
+```
+
+API Gateway owns the URL and the routing. Lambda owns the logic. DynamoDB owns the data. Each can be changed without touching the other two, and each scales and bills separately.
+
+The API has three routes, all served by **one** function that looks at the HTTP method:
+
+| Route | Does | DynamoDB call |
+| --- | --- | --- |
+| `POST /tasks` | creates a task | `put_item` |
+| `GET /tasks` | lists the user's tasks | `query` on the partition key |
+| `DELETE /tasks/{id}` | removes one task | `delete_item` with the full key |
+
+`GET /tasks` is the query from the keys lesson: a partition key (`userId`) and nothing else, so it stays fast however many users the table has. The user is fixed to `ana` here; a real API takes it from the caller's authenticated identity, never from the request body.
+
+## Build it
+
+This lab uses the `tasks` table from the [keys lesson](/en/serverless/01-dynamodb-keys/). Create it there first if you do not have it. The function needs `boto3`, which the Lambda Python runtime includes, and inside LocalStack it reaches DynamoDB without any endpoint setting.
+
+<Lab title="deploy the API and drive it with curl" time="~10 min">
+  <Predict>
+    You `POST` a task titled `write lesson`, `GET /tasks`, `DELETE` the new task by its id, and `DELETE` it a second time. What status codes do you expect from the POST and from the two deletes?
+
+    <Answer>
+      **201** for the POST. **204** for the first delete, and **204 again** for the second: deleting an item that is already gone is not an error, and DynamoDB's `delete_item` does not complain. That makes the operation **idempotent**, so a client can retry it safely.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+mkdir -p /tmp/gw && cd /tmp/gw
+
+cat > api.py <<'PY'
+import json
+import uuid
+
+import boto3
+
+table = boto3.resource("dynamodb").Table("tasks")
+
+
+def reply(status, body):
+    return {"statusCode": status, "headers": {"content-type": "application/json"}, "body": json.dumps(body)}
+
+
+def handler(event, context):
+    method = event["httpMethod"]
+    params = event.get("pathParameters") or {}
+    user = "ana"
+
+    if method == "POST":
+        task = {"userId": user, "taskId": uuid.uuid4().hex[:8], "title": json.loads(event["body"])["title"]}
+        table.put_item(Item=task)
+        return reply(201, task)
+    if method == "GET":
+        items = table.query(KeyConditionExpression="userId = :u", ExpressionAttributeValues={":u": user})["Items"]
+        return reply(200, items)
+    if method == "DELETE":
+        table.delete_item(Key={"userId": user, "taskId": params["id"]})
+        return reply(204, "")
+    return reply(405, {"error": "method not allowed"})
+PY
+zip api.zip api.py
+aws lambda create-function --function-name tasks-api --runtime python3.12 \
+  --handler api.handler --zip-file fileb://api.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name tasks-api
+```
+
+The role comes from the earlier lessons. Now the API: `/tasks` with `POST` and `GET`, and `/tasks/{id}` with `DELETE`, all proxied to the same function.
+
+```sh
+URI=arn:aws:apigateway:eu-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-west-1:000000000000:function:tasks-api/invocations
+
+API=$(aws apigateway create-rest-api --name tasks --query id --output text)
+ROOT=$(aws apigateway get-resources --rest-api-id $API --query 'items[0].id' --output text)
+TASKS=$(aws apigateway create-resource --rest-api-id $API --parent-id $ROOT \
+  --path-part tasks --query id --output text)
+ONE=$(aws apigateway create-resource --rest-api-id $API --parent-id $TASKS \
+  --path-part '{id}' --query id --output text)
+
+aws apigateway put-method --rest-api-id $API --resource-id $TASKS --http-method POST --authorization-type NONE
+aws apigateway put-integration --rest-api-id $API --resource-id $TASKS --http-method POST \
+  --type AWS_PROXY --integration-http-method POST --uri $URI
+aws apigateway put-method --rest-api-id $API --resource-id $TASKS --http-method GET --authorization-type NONE
+aws apigateway put-integration --rest-api-id $API --resource-id $TASKS --http-method GET \
+  --type AWS_PROXY --integration-http-method POST --uri $URI
+aws apigateway put-method --rest-api-id $API --resource-id $ONE --http-method DELETE --authorization-type NONE
+aws apigateway put-integration --rest-api-id $API --resource-id $ONE --http-method DELETE \
+  --type AWS_PROXY --integration-http-method POST --uri $URI
+
+aws apigateway create-deployment --rest-api-id $API --stage-name dev
+aws lambda add-permission --function-name tasks-api --statement-id apigw \
+  --action lambda:InvokeFunction --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:eu-west-1:000000000000:$API/*/*/*"
+```
+
+Drive it:
+
+```sh
+URL=http://$API.execute-api.localhost.localstack.cloud:4566/dev
+
+curl -s -i -X POST "$URL/tasks" -H 'content-type: application/json' -d '{"title":"write lesson"}'
+echo; echo
+curl -s "$URL/tasks"; echo
+```
+<Output>
+```text
+# the id, the dates and some headers in your output differ; headers are trimmed
+HTTP/1.1 201 CREATED
+content-type: application/json
+Content-Length: 64
+
+{"userId": "ana", "taskId": "384730da", "title": "write lesson"}
+
+[{"taskId": "384730da", "title": "write lesson", "userId": "ana"}, ...]
+```
+</Output>
+
+Now take the id from the POST reply and delete it, twice:
+
+```sh
+ID=384730da   # use the taskId from your own POST reply
+curl -s -o /dev/null -w "first delete: %{http_code}\n" -X DELETE "$URL/tasks/$ID"
+curl -s -o /dev/null -w "second delete: %{http_code}\n" -X DELETE "$URL/tasks/$ID"
+curl -s "$URL/tasks"; echo
+```
+  </Run>
+  <Verify>
+    - The POST returns **201** and a body with a new `taskId`
+    - The GET lists the new task, plus any items `ana` already had from the keys lesson
+    - Both deletes return **204**, and the task is gone from the next GET
+  </Verify>
+</Lab>
+
+<Lab title="what the handler never sees" time="~3 min" collapsed>
+  <Predict>
+    You `POST` to `/tasks` with a body that is not JSON. The handler calls `json.loads` on it and raises an exception. What does the client get?
+
+    <Answer>
+      **502**, `Internal server error`. The exception means the function returned an error, not a response, so API Gateway has nothing to forward. The real reason is in the function's log group, which is where to look.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+curl -s -w "  -> %{http_code}\n" -X POST "$URL/tasks" -H 'content-type: application/json' -d 'oops'
+aws logs tail /aws/lambda/tasks-api --since 2m --format short | grep -i error | head -3
+```
+  </Run>
+  <Verify>
+    - The client sees only a 502 with a generic message
+    - The log group shows the exception (a JSON decode error), because the details never travel back to the client
+  </Verify>
+</Lab>
+
+Handling that properly means validating the body and returning a `400` with a useful message yourself; the 502 is what you get when you do not.
+
+## What changes on real AWS
+
+<RealAws title="The function needs permission to touch the table">
+  On real AWS the function's execution role must allow `dynamodb:PutItem`, `Query` and `DeleteItem` on the table, or each call fails with an access error. LocalStack does not enforce this, so the lab runs without it. Grant exactly those actions on exactly that table's ARN.
+</RealAws>
+
+<RealAws cost title="Three meters run at once">
+  A request is billed by API Gateway, by Lambda (time and memory) and by DynamoDB (read and write units). A scan in place of the query would raise only the DynamoDB share, which is how a cheap-looking API gets an expensive bill.
+</RealAws>
+
+<Note title="One function or many">
+  One function per route keeps each small and separately tunable, but means more to deploy; one function for the whole API is simpler but couples everything. Both work, and the event always says which route was called.
+</Note>
+
+<Recap>
+
+- API Gateway routes, Lambda decides, DynamoDB stores: three services, one request path.
+- One handler can serve many routes by reading `httpMethod` and `pathParameters` from the event.
+- `GET` by partition key stays fast; a repeated `DELETE` is harmless because deleting nothing is not an error.
+- A thrown exception becomes a 502, so validate input and answer with a proper status yourself.
+
+</Recap>

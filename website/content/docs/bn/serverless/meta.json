@@ -1,0 +1,8 @@
+{
+  "title": "Serverless API",
+  "pages": [
+    "01-dynamodb-keys",
+    "02-api-gateway",
+    "03-tasks-api"
+  ]
+}

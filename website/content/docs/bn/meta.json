@@ -4,6 +4,7 @@
     "basics",
     "s3",
     "iam",
-    "lambda"
+    "lambda",
+    "serverless"
   ]
 }

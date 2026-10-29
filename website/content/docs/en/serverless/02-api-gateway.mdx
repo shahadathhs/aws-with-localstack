@@ -1,0 +1,174 @@
+---
+title: API Gateway turns HTTP into an event
+description: API Gateway receives an HTTP request, matches it to a route and hands your Lambda function a JSON event. See exactly what the function receives, and what it must send back.
+time: 14 min
+needs:
+  - The event object
+  - Running LocalStack with Docker Compose
+learn:
+  - How a method and path become a route, and a route becomes an event
+  - What a Lambda proxy integration expects in return
+  - Why an unknown route gives 403 and a broken handler gives 502
+---
+
+## The translation layer
+
+Lambda does not speak HTTP; it takes an event and returns a value. **API Gateway** sits in front and translates, so a request from `curl` or a browser becomes an invocation, and the function's answer becomes an HTTP response.
+
+```text
+client --HTTP--> API Gateway --event JSON--> Lambda --response object--> API Gateway --HTTP--> client
+         (route + stage)                    (your handler)           (statusCode, headers, body)
+```
+
+The pieces of a **REST API** in API Gateway:
+
+- **Resource**: a path segment such as `/hello`, or a parameter such as `/{name}`. Resources nest into the URL.
+- **Method**: `GET`, `POST` and so on, attached to a resource. `ANY` matches every method.
+- **Integration**: what runs when the method is called. With the **Lambda proxy** type (`AWS_PROXY`) the whole request is forwarded to a function.
+- **Stage**: a named, deployed snapshot of the API (`dev`, `prod`). Nothing is reachable until you create a **deployment** onto a stage, and the stage name is part of the URL.
+
+With a proxy integration the contract is fixed on both sides. In: an event with `httpMethod`, `path`, `resource`, `pathParameters`, `queryStringParameters`, `headers` and `body` (always a string or `null`). Out: an object with a `statusCode`, optional `headers`, and a `body` that is a **string**. Anything else is a malformed response.
+
+## Build one and look at the event
+
+The function below echoes what it received. If you add `?fail=1` it returns something that is not a valid proxy response, on purpose.
+
+<Lab title="wire a route and read the event" time="~8 min">
+  <Predict>
+    You call `GET /hello/ana?lang=bn`, and then `POST /hello/ana` with a JSON body. The route is `/hello/{name}`. What do `pathParameters` and `queryStringParameters` hold in each call?
+
+    <Answer>
+      For the first call: `pathParameters` is `{"name": "ana"}` and the query is `{"lang": "bn"}`. For the POST: `pathParameters` is the same, the query is `null` (no query string, so no empty object), and the body is the JSON text you sent, as a string.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+mkdir -p /tmp/gw && cd /tmp/gw
+
+aws iam create-role --role-name lambda-role --assume-role-policy-document '{
+  "Version": "2012-10-17",
+  "Statement": [{ "Effect": "Allow", "Principal": { "Service": "lambda.amazonaws.com" }, "Action": "sts:AssumeRole" }]
+}'
+
+cat > echo.py <<'PY'
+import json
+
+
+def handler(event, context):
+    seen = {
+        "method": event["httpMethod"],
+        "resource": event["resource"],
+        "path": event["path"],
+        "pathParameters": event["pathParameters"],
+        "query": event["queryStringParameters"],
+        "body": event["body"],
+    }
+    if event["queryStringParameters"] and event["queryStringParameters"].get("fail"):
+        return seen  # not a valid proxy response: no statusCode
+    return {"statusCode": 200, "headers": {"content-type": "application/json"}, "body": json.dumps(seen)}
+PY
+zip echo.zip echo.py
+aws lambda create-function --function-name echo --runtime python3.12 \
+  --handler echo.handler --zip-file fileb://echo.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name echo
+```
+
+The role may already exist from the Lambda lessons; if so, the first command fails harmlessly. Now build the API: a resource `/hello`, a child `/hello/{name}`, one `ANY` method, a Lambda proxy integration, and a deployment to the `dev` stage.
+
+```sh
+API=$(aws apigateway create-rest-api --name echo-api --query id --output text)
+ROOT=$(aws apigateway get-resources --rest-api-id $API --query 'items[0].id' --output text)
+HELLO=$(aws apigateway create-resource --rest-api-id $API --parent-id $ROOT \
+  --path-part hello --query id --output text)
+NAME=$(aws apigateway create-resource --rest-api-id $API --parent-id $HELLO \
+  --path-part '{name}' --query id --output text)
+
+aws apigateway put-method --rest-api-id $API --resource-id $NAME \
+  --http-method ANY --authorization-type NONE
+aws apigateway put-integration --rest-api-id $API --resource-id $NAME \
+  --http-method ANY --type AWS_PROXY --integration-http-method POST \
+  --uri arn:aws:apigateway:eu-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-west-1:000000000000:function:echo/invocations
+
+aws apigateway create-deployment --rest-api-id $API --stage-name dev
+aws lambda add-permission --function-name echo --statement-id apigw \
+  --action lambda:InvokeFunction --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:eu-west-1:000000000000:$API/*/*/*"
+```
+
+Two things are easy to forget: the integration's `--integration-http-method` is always `POST` (that is how API Gateway calls Lambda, whatever the client used), and API Gateway needs permission to invoke the function, just as S3 did. The API is now reachable at a URL built from its id:
+
+```sh
+URL=http://$API.execute-api.localhost.localstack.cloud:4566/dev
+
+curl -s "$URL/hello/ana?lang=bn"; echo
+curl -s -X POST "$URL/hello/ana" -H 'content-type: application/json' -d '{"a":1}'; echo
+```
+<Output>
+```text
+{"method": "GET", "resource": "/hello/{name}", "path": "/hello/ana", "pathParameters": {"name": "ana"}, "query": {"lang": "bn"}, "body": null}
+{"method": "POST", "resource": "/hello/{name}", "path": "/hello/ana", "pathParameters": {"name": "ana"}, "query": null, "body": "{\"a\":1}"}
+```
+</Output>
+  </Run>
+  <Verify>
+    - `resource` is the route pattern `/hello/{name}`, `path` is the real path, and `pathParameters.name` is `ana`
+    - `query` is `{"lang": "bn"}` for the GET and `null` for the POST
+    - The POST `body` is your JSON, still as text
+  </Verify>
+</Lab>
+
+## Two ways to fail
+
+<Lab title="an unknown route and a broken handler" time="~4 min">
+  <Predict>
+    You call `GET /hello` (no name), then `GET /hello/ana?fail=1`, where the handler returns a dictionary with no `statusCode`. Which status codes come back?
+
+    <Answer>
+      **403** for the first call, with the message `Missing Authentication Token`: no route matches, and API Gateway reports that, misleadingly, as an authentication problem. **502** for the second, with `Internal server error`: the function ran fine, but its answer was not a valid proxy response.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+curl -s -w "  -> %{http_code}\n" "$URL/hello"
+curl -s -w "  -> %{http_code}\n" "$URL/hello/ana?fail=1"
+```
+<Output>
+```text
+{"message": "Missing Authentication Token"}  -> 403
+{"message": "Internal server error"}  -> 502
+```
+</Output>
+  </Run>
+  <Verify>
+    - A path that matches no resource is 403, not 404
+    - A handler whose result lacks a proper `statusCode` and string `body` is 502, even though the function itself succeeded
+  </Verify>
+</Lab>
+
+## What changes on real AWS
+
+<RealAws title="HTTP APIs, a lighter alternative">
+  AWS offers a second, cheaper kind of API Gateway called an HTTP API, with a slimmer event. This course uses the REST API because that is what LocalStack runs here; the ideas in this lesson (routes, stages, proxy contract) carry over.
+</RealAws>
+
+<RealAws cost title="Per-request pricing and throttling">
+  API Gateway bills per request, and applies account and stage-level rate limits (HTTP 429 when exceeded). The limits and usage plans are configuration you meet on real AWS, not something to rely on here.
+</RealAws>
+
+<Note title="Send a content type">
+  With `curl -d` and no `content-type` header, `curl` labels the body as a form. Always send `-H 'content-type: application/json'` when the body is JSON, or the handler may receive it URL-encoded.
+</Note>
+
+<Note title="CORS is yours to answer">
+  A browser calling your API from another origin needs the right `Access-Control-Allow-*` headers in the response. With a proxy integration your handler sets them, because API Gateway forwards your headers untouched.
+</Note>
+
+<Recap>
+
+- API Gateway matches the request to a resource and method, and a Lambda proxy integration forwards it as an event.
+- The handler must answer with `statusCode`, `headers` and a string `body`, or API Gateway returns 502.
+- Nothing is reachable until a deployment puts the API on a stage, and an unmatched path returns 403.
+
+</Recap>

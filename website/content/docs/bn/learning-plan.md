@@ -37,21 +37,19 @@ IAM:
 
 ## Phase 2 — কম্পিউট: Lambda
 
-1. [এক্সিকিউশন মডেল](/bn/lambda/01-execution-model/) — sandbox-এ handler; cold বনাম warm; আলাদা instance হিসেবে concurrency; timeout ও memory
-2. [Event object](/bn/lambda/02-the-event-object/) — ফাংশন কেন invoke হলো; ম্যানুয়াল বনাম S3 event; synchronous বনাম asynchronous কল; লগ
-3. [SQS trigger](/bn/lambda/03-sqs-triggers/) — event source mapping; batch size; আংশিক ব্যর্থতা জানানো; অন্তহীন retry
+10. [এক্সিকিউশন মডেল](/bn/lambda/01-execution-model/) — sandbox-এ handler; cold বনাম warm; আলাদা instance হিসেবে concurrency; timeout ও memory
+11. [Event object](/bn/lambda/02-the-event-object/) — ফাংশন কেন invoke হলো; ম্যানুয়াল বনাম S3 event; synchronous বনাম asynchronous কল; লগ
+12. [SQS trigger](/bn/lambda/03-sqs-triggers/) — event source mapping; batch size; আংশিক ব্যর্থতা জানানো; অন্তহীন retry
 
 এক্সপেরিমেন্ট: Lambda ডিপ্লয় করে ম্যানুয়ালি invoke; global counter দিয়ে warmth প্রমাণ; একটি bucket ওয়্যার করা (আপলোড → Lambda); SQS message batch আকারে consume করে শুধু বিষাক্তটি retry করানো।
 
-## Phase 3 — সার্ভারলেস চেইন: API Gateway → Lambda → DynamoDB
+## Phase 3 — সার্ভারলেস শৃঙ্খল: API Gateway → Lambda → DynamoDB
 
-- API Gateway: route, stage, HTTP → event-JSON রূপান্তর, throttling
-- DynamoDB-র paradigm shift: **শুধু key দিয়েই দ্রুত** — partition key shard ঠিক করে; query আগে ভেবে টেবিল ডিজাইন
-- Partition key + sort key; GSI / LSI — অতিরিক্ত খরচে বিকল্প query view
-- RCU / WCU: throughput প্রতি টেবিলে কেনা হয় — "DynamoDB bills per access"-এর উৎস
-- DynamoDB modeling ≠ MongoDB modeling: join নেই, ad-hoc query নেই
+13. [DynamoDB key দিয়েই দ্রুত](/bn/serverless/01-dynamodb-keys/) — partition ও sort key; query বনাম scan; secondary index
+14. [API Gateway HTTP-কে event বানায়](/bn/serverless/02-api-gateway/) — route, stage, proxy চুক্তি; কেন 403 ও 502
+15. [Tasks API](/bn/serverless/03-tasks-api/) — পুরো শৃঙ্খল curl দিয়ে চালানো; idempotent delete
 
-এক্সপেরিমেন্ট: tasks API বানানো (`POST/GET/DELETE /tasks`) curl দিয়ে টেস্ট; key দিয়ে query বনাম full scan; GSI যোগ করে non-key attribute দিয়ে query।
+এখানে সবকিছু API Gateway-র REST API ধরন ব্যবহার করে, কারণ LocalStack সেটিই চালায়। এক্সপেরিমেন্ট: একটি tasks API বানানো (`POST/GET/DELETE /tasks`) আর curl দিয়ে ডাকা; key দিয়ে query বনাম পুরো scan; GSI যোগ করে non-key attribute-এ query।
 
 ## Phase 4 — মেসেজিং: SQS (ডিপ) + SNS + EventBridge
 
