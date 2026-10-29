@@ -1,0 +1,153 @@
+---
+title: ভার্সনিং
+description: ভার্সনিং চালু হলে কী বদলায় — delete marker, restore, noncurrent version এবং এটি কেন one-way door।
+time: ১৪ মিনিট
+needs:
+  - অবজেক্ট মডেল
+learn:
+  - ভার্সনিং চালু bucket-এ ডিলিট করলে কেন কিছুই মুছে যায় না
+  - list-object-versions কীভাবে পড়তে হয়, Versions বনাম DeleteMarkers
+  - সংরক্ষিত প্রতিটি version কেন billed
+---
+
+## একটি key হয়ে যায় স্তূপ
+
+Versioning ছাড়া একই key-তে লেখা মানে আগের bytes **উপরে লিখে ধ্বংস**। undo নেই। ক্ষতির দিনটির আগে কেউ খেয়াল করে না।
+
+Versioning চালু থাকলে প্রতিটি write একটি নতুন অপরিবর্তনীয় **version** তৈরি করে, `VersionId` দিয়ে চিহ্নিত। একটি key হয়ে যায় ভার্সনের _স্তূপ_, আর ডিলিট কিছু মুছে না দিয়ে ওপরে একটি marker বসায়।
+
+<Figures>
+  <Figure tag="আগে" caption="তিনটি version, GET নতুনটি দেয়">
+    <VersionStack />
+  </Figure>
+  <Figure tag="DELETE-এর পরে" caption="ওপরে marker, কিছুই মুছেনি">
+    <VersionStack after />
+  </Figure>
+</Figures>
+
+Versioning চালু অবস্থায় প্রতিটি অপারেশনের অর্থ:
+
+| অপারেশন                 | Versioning ছাড়া | Versioning-সহ                                         |
+| ----------------------- | ---------------- | ----------------------------------------------------- |
+| একই key-তে PUT          | bytes বদলে যায়  | ওপরে নতুন version যোগ হয়                             |
+| DELETE key              | bytes শেষ        | একটি **delete marker** বসে — পুরনো version থেকেই যায় |
+| GET key                 | bytes দেয়       | _নতুনতম non-deleted_ version দেয়                     |
+| `?versionId=` দিয়ে GET | n/a              | ঠিক সেই version দেয়                                  |
+
+Delete marker নিজেও key-র একটি version। "মুছে যাওয়া" object ফিরিয়ে আনা = delete marker ডিলিট করা, তখন পুরনো ডেটা ফিরে আসে।
+
+নিয়ম ও ফল:
+
+- Versioning bucket-স্তরের সুইচ: `Enabled` / `Suspended` / never-set। **কখনোই ফিরে যেতে পারবে না never-set-এ** — suspended অবস্থাতেও enabled থাকাকালীন জমা ভার্সন থেকে যায়
+- প্রতিটি সংরক্ষিত version **billed**। একই key ১০০০ বার লেখা = ১০০০ version (lifecycle rule noncurrent version expire করতে পারে — [স্টোরেজ ক্লাস ও লাইফসাইকেল](/bn/s3/03-storage-classes-and-lifecycle/))
+- MFA Delete আছে (version স্থায়ীভাবে ডিলিটে MFA লাগে) — বিরল, নামটুকু জানা থাকুক
+
+## তিনটি version আর একটি ডিলিট
+
+<Lab title="তিনটি version আর একটি ডিলিট" time="~৪ মিনিট">
+  <Predict>
+    `f.txt` তিনবার লিখে তারপর ডিলিট করলে `list-object-versions` কয়টি এন্ট্রি দেখাবে, আর সাধারণ GET কি তবু কাজ করবে?
+
+    <Answer>
+      **৩টি `Versions` আর ১টি `DeleteMarkers`।** marker-টাই সবচেয়ে নতুন এন্ট্রি, তাই সাধারণ GET-এ ৪০৪; কিন্তু `?versionId=` দিলে প্রতিটি version এখনো আসে।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+aws s3api put-bucket-versioning --bucket ph1-bucket \
+  --versioning-configuration Status=Enabled
+
+echo v1 > /tmp/f.txt && aws s3 cp /tmp/f.txt s3://ph1-bucket/v/f.txt
+echo v2 > /tmp/f.txt && aws s3 cp /tmp/f.txt s3://ph1-bucket/v/f.txt
+echo v3 > /tmp/f.txt && aws s3 cp /tmp/f.txt s3://ph1-bucket/v/f.txt
+
+aws s3 rm s3://ph1-bucket/v/f.txt
+aws s3api list-object-versions --bucket ph1-bucket --prefix v/
+```
+    <Output>
+```text
+# shortened: ETags, checksums and timestamps left out; VersionIds differ
+delete: s3://ph1-bucket/v/f.txt
+{
+    "Versions": [
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdNKJHOG3OWZj1zcJNqk5qkSJUq",
+            "IsLatest": false
+        },
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdMuCItpacbD2uxIhDGw7PwhSDs",
+            "IsLatest": false
+        },
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdLDBRX.hCYd3RyZwiaQ.ibRDyk",
+            "IsLatest": false
+        }
+    ],
+    "DeleteMarkers": [
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdOuBP6.l9WWP7sfTkCWUgpl3ob",
+            "IsLatest": true
+        }
+    ]
+}
+```
+  </Output>
+</Run>
+  <Verify>
+    - `Versions`-এর নিচে তিনটি এন্ট্রি, প্রতিটির নিজস্ব `VersionId`
+    - `IsLatest: true`-সহ একটি `DeleteMarkers` এন্ট্রি
+    - `aws s3api get-object --bucket ph1-bucket --key v/f.txt /tmp/out.txt` `NoSuchKey` দিয়ে ব্যর্থ হয় (সাধারণ `aws s3 cp` তার আগেই HEAD request-এ `404 Not Found` দিয়ে ব্যর্থ হয়)
+  </Verify>
+</Lab>
+
+<Lab title="object ফিরিয়ে আনো" time="~৩ মিনিট" collapsed>
+  <Run>
+listing থেকে পুরোনোটির `VersionId` কপি করে সরাসরি আনো:
+
+```sh
+aws s3api get-object --bucket ph1-bucket --key v/f.txt \
+  --version-id <OLDEST_VERSION_ID> /tmp/old.txt
+cat /tmp/old.txt        # -> v1
+```
+
+Restore মানে marker-টি ডিলিট করা। marker-কে _version ID দিয়ে_ টার্গেট করতেই হবে, নাহলে DELETE আরেকটি marker জমায়:
+
+```sh
+aws s3api delete-object --bucket ph1-bucket --key v/f.txt \
+  --version-id <DELETE_MARKER_VERSION_ID>
+aws s3 ls s3://ph1-bucket/v/        # f.txt ফিরে এসেছে (v3 দেখাচ্ছে)
+```
+  </Run>
+  <Verify>
+    - `aws s3 ls` আবার `f.txt` দেখায়
+    - সবচেয়ে নতুন version হলো `v3`
+  </Verify>
+</Lab>
+
+## বিল যুক্ত হলে যা বদলায়
+
+<RealAws cost title="Noncurrent version-এরও বিল হয়">
+  **Versioning + `aws s3 rm --recursive` কিছুই মুক্ত করে না।** মুছে ফেলা প্রতিটি object noncurrent version হয়ে যায়, আর এভাবেই মানুষ ছয় অঙ্কের S3 বিল পায়। আসল পরিষ্কার করে lifecycle-এর `NoncurrentVersionExpiration`।
+</RealAws>
+
+<Destructive>
+  নির্দিষ্ট `--version-id` ডিলিট স্থায়ী: পরে সরিয়ে ফেলার মতো কোনো marker থাকে না।
+</Destructive>
+
+<Note>
+  Version ID শুধু key-র ভিতরে unique — কখনো গ্লোবাল ID ভাববে না। "S3 backup target" এর স্ট্যান্ডার্ড প্যাটার্ন: versioning + MFA delete + আলাদা account।
+</Note>
+
+<Recap>
+
+- ভার্সনিং চালু key একটি স্তূপ; DELETE ওপরে একটি marker বসায়।
+- marker-টি তার version ID দিয়ে ডিলিট করলেই restore হয়।
+- সংরক্ষিত প্রতিটি version billed: lifecycle rule ভেবে রাখো।
+
+</Recap>

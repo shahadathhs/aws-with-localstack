@@ -1,0 +1,48 @@
+<!doctype html><meta charset=utf-8><link rel=stylesheet href=common.css><script src=common.js></script>
+<body class=m><header class=top><div class=in><div class=brand><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M4 18V7M4 7l8 4M12 11l8-4M12 11v9M20 7v11"/><circle cx="4" cy="7" r="1.6" fill="var(--accent)"/><circle cx="12" cy="11" r="1.6" fill="var(--accent)"/><circle cx="20" cy="7" r="1.6" fill="var(--accent)"/></svg>AWS with LocalStack</div><span class=sp></span><span class=ib><i data-i=search></i></span><span class=ib><i data-i=menu></i></span></div></header><div class=l-wrap><div class=l-all><span>All lessons</span><i data-i=chev></i></div><div class=l-art>
+<header class=l-head>
+ <div class=label><b>S3</b> / lesson 2 of 6</div>
+ <h1>Versioning</h1>
+ <p class=lead>Delete markers, restores, noncurrent versions, and why enabling it is a one-way door.</p>
+ <div class=l-meta><span><b>Time</b>12 min</span><span><b>Needs</b>The object model</span><span><b>Bucket</b>ph1-bucket</span></div>
+ <div class=l-learn><div class=label style="margin:0">You will learn</div><ul>
+  <li><i data-i=check></i>Why a delete on a versioned bucket removes nothing</li>
+  <li><i data-i=check></i>How to read <code>list-object-versions</code>: Versions vs DeleteMarkers</li>
+  <li><i data-i=check></i>Why every stored version is billed</li></ul></div>
+ <div class=l-chips><span><b>01</b>Concept</span><span><b>02</b>Experiment</span><span><b>03</b>On real AWS</span><span><b>04</b>Recap</span></div>
+</header>
+<section class=l-sec><div class=label><b>01</b> / Concept</div><h2>A key becomes a stack</h2>
+ <p>Without versioning, writing to an existing key <b>overwrites and destroys</b> the previous bytes. With it on, every write adds an immutable <b>version</b>, and a delete adds a marker instead of removing anything.</p>
+ <div class=l-two>
+  <figure class=l-fig><svg viewBox="0 0 300 212"><text x="20" y="18" class="t-main">key: v/f.txt</text><rect x="20" y="30" width="150" height="34" rx="3" class="bx"/><text x="32" y="51" class="t-main">v3 "third draft"</text><rect x="20" y="74" width="150" height="34" rx="3" class="bx"/><text x="32" y="95">v2 "second draft"</text><rect x="20" y="118" width="150" height="34" rx="3" class="bx"/><text x="32" y="139">v1 "first draft"</text><text x="200" y="52" class="t-main">GET</text><text x="200" y="66" class="t-ok">200  (v3)</text><path d="M196 47H176" class="ln"/></svg><figcaption><b>before</b>three versions, GET returns the newest</figcaption></figure>
+  <figure class=l-fig><svg viewBox="0 0 300 212"><text x="20" y="18" class="t-main">key: v/f.txt</text><rect x="20" y="30" width="150" height="34" rx="3" class="b-deny" stroke-dasharray="4 3"/><text x="32" y="51" class="t-deny">v4 delete marker</text><rect x="20" y="70" width="150" height="34" rx="3" class="bx"/><text x="32" y="91">v3 "third draft"</text><rect x="20" y="114" width="150" height="34" rx="3" class="bx"/><text x="32" y="135">v2 "second draft"</text><rect x="20" y="158" width="150" height="34" rx="3" class="bx"/><text x="32" y="179">v1 "first draft"</text><text x="200" y="52" class="t-main">GET</text><text x="200" y="66" class="t-deny">404 NoSuchKey</text><path d="M196 47H176" class="ln"/></svg><figcaption><b>after DELETE</b>a marker on top, nothing removed</figcaption></figure>
+ </div>
+ <table class=ledger style="margin-top:6px"><tr><th>Operation</th><th>Without versioning</th><th>With versioning</th></tr>
+ <tr><td style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--text);width:140px">PUT same key</td><td class=muted>replaces bytes</td><td class=muted>adds a new version</td></tr>
+ <tr><td style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--text)">DELETE key</td><td class=muted>bytes gone</td><td class=muted>adds a delete marker</td></tr></table>
+</section>
+<section class=l-sec><div class=label><b>02</b> / Experiment</div><h2>Three versions and a delete</h2>
+ <div class=l-lab>
+  <div class=hd><span>lab 2.1 · versions and a delete</span><span>~4 min</span></div>
+  <div class="l-step predict"><div class=n>1</div><div><span class="tag">predict</span><p>You write <code>f.txt</code> three times, then delete it. How many entries will <code>list-object-versions</code> show, and does a plain GET still work?</p><div class=l-guess>Your guess…</div><span class=l-btn><i data-i=eye></i>Hide answer</span><div class=l-answer><b>3 Versions and 1 DeleteMarker.</b> The marker is the newest entry, so a plain GET is a 404, while <code>?versionId=</code> still returns each version.</div></div></div>
+  <div class="l-step run"><div class=n>2</div><div><span class="tag">run</span><div class=l-tabs><span class=on>Command</span><span>Expected output</span></div>
+   <div class=l-term><span class=copy>Copy</span><pre style="border-top-left-radius:0"><span class=p>$</span> echo v1 &gt; /tmp/f.txt &amp;&amp; aws s3 cp /tmp/f.txt s3://ph1-bucket/v/f.txt
+<span class=p>$</span> echo v2 &gt; /tmp/f.txt &amp;&amp; aws s3 cp /tmp/f.txt s3://ph1-bucket/v/f.txt
+<span class=p>$</span> echo v3 &gt; /tmp/f.txt &amp;&amp; aws s3 cp /tmp/f.txt s3://ph1-bucket/v/f.txt
+<span class=p>$</span> aws s3 rm s3://ph1-bucket/v/f.txt
+<span class=p>$</span> aws s3api list-object-versions --bucket ph1-bucket --prefix v/</pre></div></div></div>
+  <div class="l-step verify"><div class=n>3</div><div><span class="tag">verify</span><ul class=l-check>
+   <li><i data-i=check></i>Three entries under <code>Versions</code></li>
+   <li><i data-i=check></i>A <code>DeleteMarkers</code> entry with <code>IsLatest: true</code></li>
+   <li><i data-i=check></i><code>aws s3api get-object --bucket ph1-bucket --key v/f.txt /tmp/out.txt</code> fails with <code>NoSuchKey</code></li></ul></div></div>
+ </div>
+ <div class=l-lab style="margin-top:12px"><div class=hd><span>lab 2.2 · restore the object</span><span>~3 min · expand</span></div></div>
+</section>
+<section class=l-sec><div class=label><b>03</b> / On real AWS</div><h2>What changes with a bill attached</h2>
+ <div class=l-call><i></i><div class=b><div class=k><span class=cost>cost</span>Noncurrent versions are billed</div><b style="color:var(--text)">Versioning plus <code>aws s3 rm --recursive</code> frees nothing.</b> Every deleted object becomes a noncurrent version. Add a lifecycle rule with <code>NoncurrentVersionExpiration</code>.</div></div>
+ <div class="l-call deny"><i></i><div class=b><div class=k>destructive</div>Deleting a specific <code>--version-id</code> is permanent. There is no marker to remove afterwards.</div></div>
+ <div class=l-call><i></i><div class=b><div class=k>good to know</div>Version IDs are only unique within a key. Never treat them as global IDs.</div></div>
+</section>
+<section class=l-recap><div class=label style="margin:0">04 / Recap</div><ul><li>A versioned key is a stack; DELETE adds a marker on top.</li><li>Restore by deleting the marker, addressed by its version ID.</li><li>Every stored version is billed: plan a lifecycle rule.</li></ul></section>
+<div class=l-pager><div><small>← Previous</small>The object model</div><div style="text-align:right"><small>Next →</small>Storage classes and lifecycle</div></div>
+</div></div>

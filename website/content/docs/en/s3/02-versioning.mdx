@@ -1,0 +1,153 @@
+---
+title: Versioning
+description: What changes when versioning is enabled — delete markers, restores, noncurrent versions, and why it is a one-way door.
+time: 14 min
+needs:
+  - The object model
+learn:
+  - Why a delete on a versioned bucket removes nothing
+  - How to read list-object-versions, Versions vs DeleteMarkers
+  - Why every stored version is billed
+---
+
+## A key becomes a stack
+
+Without versioning, writing to an existing key **overwrites and destroys** the previous bytes. There is no undo. This surprises nobody until the day it matters.
+
+With versioning on, every write creates a new immutable **version** of the object, identified by a `VersionId`. A key becomes a _stack_ of versions, and a delete adds a marker on top instead of removing anything.
+
+<Figures>
+  <Figure tag="before" caption="three versions, GET returns the newest">
+    <VersionStack />
+  </Figure>
+  <Figure tag="after DELETE" caption="a marker on top, nothing removed">
+    <VersionStack after />
+  </Figure>
+</Figures>
+
+What each operation means with versioning on:
+
+| Operation              | Without versioning | With versioning                                  |
+| ---------------------- | ------------------ | ------------------------------------------------ |
+| PUT same key           | replaces bytes     | adds a new version on top                        |
+| DELETE key             | bytes gone         | adds a **delete marker** — older versions remain |
+| GET key                | returns bytes      | returns the _newest non-deleted_ version         |
+| GET with `?versionId=` | n/a                | returns exactly that version                     |
+
+A delete marker is itself a version of the key. Restoring a "deleted" object = deleting the delete marker (which requires versioning credentials/actions), and the old data resurfaces.
+
+Rules and consequences:
+
+- Versioning is a bucket-level switch: `Enabled` / `Suspended` / never-set. **You can never return to never-set** — suspended still keeps versions accumulated while it was enabled
+- Every stored version is **billed**. Churning the same key 1000 times with versioning on stores 1000 versions (lifecycle rules can expire noncurrent versions — [storage classes and lifecycle](/en/s3/03-storage-classes-and-lifecycle/))
+- MFA Delete exists (requires MFA to permanently delete versions) — rarely used, know it exists
+
+## Three versions and a delete
+
+<Lab title="versions and a delete" time="~4 min">
+  <Predict>
+    After writing `f.txt` three times and then deleting it: how many entries will `list-object-versions` show, and does a plain GET still work?
+
+    <Answer>
+      **3 `Versions` and 1 `DeleteMarkers`.** The marker is the newest entry, so a plain GET is a 404, while `?versionId=` still returns each version.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+aws s3api put-bucket-versioning --bucket ph1-bucket \
+  --versioning-configuration Status=Enabled
+
+echo v1 > /tmp/f.txt && aws s3 cp /tmp/f.txt s3://ph1-bucket/v/f.txt
+echo v2 > /tmp/f.txt && aws s3 cp /tmp/f.txt s3://ph1-bucket/v/f.txt
+echo v3 > /tmp/f.txt && aws s3 cp /tmp/f.txt s3://ph1-bucket/v/f.txt
+
+aws s3 rm s3://ph1-bucket/v/f.txt
+aws s3api list-object-versions --bucket ph1-bucket --prefix v/
+```
+    <Output>
+```text
+# shortened: ETags, checksums and timestamps left out; VersionIds differ
+delete: s3://ph1-bucket/v/f.txt
+{
+    "Versions": [
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdNKJHOG3OWZj1zcJNqk5qkSJUq",
+            "IsLatest": false
+        },
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdMuCItpacbD2uxIhDGw7PwhSDs",
+            "IsLatest": false
+        },
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdLDBRX.hCYd3RyZwiaQ.ibRDyk",
+            "IsLatest": false
+        }
+    ],
+    "DeleteMarkers": [
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdOuBP6.l9WWP7sfTkCWUgpl3ob",
+            "IsLatest": true
+        }
+    ]
+}
+```
+  </Output>
+</Run>
+  <Verify>
+    - Three entries under `Versions`, each with its own `VersionId`
+    - A `DeleteMarkers` entry with `IsLatest: true`
+    - `aws s3api get-object --bucket ph1-bucket --key v/f.txt /tmp/out.txt` fails with `NoSuchKey` (plain `aws s3 cp` fails earlier, with a `404 Not Found` from its HEAD request)
+  </Verify>
+</Lab>
+
+<Lab title="restore the object" time="~3 min" collapsed>
+  <Run>
+Copy the oldest `VersionId` from the listing and fetch it explicitly:
+
+```sh
+aws s3api get-object --bucket ph1-bucket --key v/f.txt \
+  --version-id <OLDEST_VERSION_ID> /tmp/old.txt
+cat /tmp/old.txt        # -> v1
+```
+
+Restore by deleting the marker. You must address the marker _by version ID_, otherwise DELETE just stacks another marker:
+
+```sh
+aws s3api delete-object --bucket ph1-bucket --key v/f.txt \
+  --version-id <DELETE_MARKER_VERSION_ID>
+aws s3 ls s3://ph1-bucket/v/        # f.txt is back (showing v3)
+```
+  </Run>
+  <Verify>
+    - `aws s3 ls` shows `f.txt` again
+    - The newest version is `v3`
+  </Verify>
+</Lab>
+
+## What changes with a bill attached
+
+<RealAws cost title="Noncurrent versions are billed">
+  **Versioning plus `aws s3 rm --recursive` frees nothing.** Every deleted object becomes a noncurrent version, which is how people receive six-figure S3 bills. Real cleanup needs lifecycle rules with `NoncurrentVersionExpiration`.
+</RealAws>
+
+<Destructive>
+  Deleting a specific `--version-id` is permanent: there is no marker to remove afterwards.
+</Destructive>
+
+<Note>
+  Version IDs are only unique within a key — never treat them as global IDs. The standard "S3 as backup target" pattern is versioning plus MFA delete plus a separate account.
+</Note>
+
+<Recap>
+
+- A versioned key is a stack; DELETE adds a marker on top.
+- Restore by deleting the marker, addressed by its version ID.
+- Every stored version is billed: plan a lifecycle rule.
+
+</Recap>

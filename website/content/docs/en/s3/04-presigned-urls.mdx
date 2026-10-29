@@ -1,0 +1,137 @@
+---
+title: Presigned URLs
+description: Temporary, credentialed access to private objects — how the signature works, GET and PUT, and what presigned URLs cannot do.
+time: 15 min
+needs:
+  - AWS CLI basics — how it's configured
+  - The object model
+learn:
+  - How a URL carries its own signature, action and expiry
+  - Why a presigned URL cannot be revoked
+  - How browsers upload straight to S3 with a presigned PUT
+---
+
+## A URL that carries its own permission
+
+Default state: bucket private, only credentialed AWS calls allowed. Your web app needs to let users download a report / upload an avatar. Two bad options first:
+
+- Make the bucket public — now _everyone_ has everything, forever
+- Proxy bytes through your server — your server pays bandwidth and does zero-value work
+
+The correct tool: a **presigned URL**. It is a normal S3 URL plus a **SigV4 query signature** — the _same signature mechanism_ your CLI uses in headers (see [AWS CLI basics](/en/basics/aws-cli/)), moved into the query string. It encodes:
+
+- the **action** (GET or PUT, this one key, no listing, no neighbors)
+- the **credentials scope** (which access key authorized it)
+- the **expiry** (a timestamp; after it, the signature is stale)
+
+<Figure caption="signing, handing over, and S3 verifying the URL"><PresignFlow /></Figure>
+
+S3 verifies the signature on arrival. No credentials in the browser, no bucket public, access self-destructs at the deadline.
+
+Properties to internalize:
+
+- The URL **is** the capability — anyone holding it can act until expiry. Treat it like a password with a timer
+- You **cannot revoke** one presigned URL. Mitigations: short expiries, or delete the object/key
+- Max expiry: 7 days (SigV4 limit; longer needs temporary-credential workarounds)
+- Presigning needs no network call — the CLI/SDK computes it locally from your credentials
+- **PUT presigning** is the bigger deal: browsers upload _directly to S3_ (forbidden by CORS otherwise), your server only issues the URL. This is the standard upload architecture
+
+## Download, then watch it expire
+
+<Lab title="presign a GET" time="~4 min">
+  <Predict>
+    With the bucket private, will `curl` succeed? For how long?
+
+    <Answer>
+      Yes, with no credentials at all, until the expiry in the URL (300 seconds here). After that the signature is stale and S3 answers `AccessDenied`.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+
+# GET — download without credentials
+aws s3 presign s3://ph1-bucket/docs/notes/today.txt --expires-in 300
+# http://localhost.localstack.cloud:4566/ph1-bucket/docs/notes/today.txt?X-Amz-Algorithm=...&X-Amz-Expires=300&...
+
+URL="<paste the printed url>"
+curl -s "$URL"                 # -> hello
+```
+
+Read the query parameters: `X-Amz-Algorithm=AWS4-HMAC-SHA256`, `X-Amz-Credential` (scope: date/region/service), `X-Amz-Date`, `X-Amz-Expires=300`, `X-Amz-Signature`. Then watch it die. LocalStack skips signature and expiry checks on presigned URLs by default, so first set `S3_SKIP_SIGNATURE_VALIDATION=0` in `.env` and run `make up` again (it recreates the container):
+
+```sh
+SHORT=$(aws s3 presign s3://ph1-bucket/docs/notes/today.txt --expires-in 5)
+sleep 6 && curl -s "$SHORT"
+# <Error><Code>AccessDenied</Code>... Request has expired
+```
+    <Output>
+```text
+# shortened: credential, date, signature and error details
+# the last line needs S3_SKIP_SIGNATURE_VALIDATION=0
+http://localhost.localstack.cloud:4566/ph1-bucket/docs/notes/today.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=…&X-Amz-Date=…&X-Amz-Expires=300&X-Amz-SignedHeaders=host&X-Amz-Signature=…
+hello
+<Error><Code>AccessDenied</Code><Message>Request has expired</Message>…</Error>
+```
+  </Output>
+</Run>
+  <Verify>
+    - The first `curl` prints `hello` without any AWS credentials
+    - The URL contains `X-Amz-Algorithm`, `X-Amz-Credential`, `X-Amz-Date`, `X-Amz-Expires=300` and `X-Amz-Signature`
+    - After the 5-second URL has expired (with `S3_SKIP_SIGNATURE_VALIDATION=0`), `curl` returns `AccessDenied` with `Request has expired`
+  </Verify>
+</Lab>
+
+## Upload straight to S3
+
+<Lab title="presign a PUT" time="~5 min" collapsed>
+  <Run>
+Now the upload direction: presign a PUT, then push bytes with curl, no AWS CLI involved.
+
+The CLI cannot presign PUT (`aws s3 presign` is GET-only) — SDKs do it. Quick Boto3 one-liner to feel it (needs `pip install boto3`):
+
+```sh
+python3 - <<'EOF'
+import boto3
+s3 = boto3.client("s3", endpoint_url="http://localhost:4566",
+                  aws_access_key_id="test", aws_secret_access_key="test",
+                  region_name="eu-west-1")
+print(s3.generate_presigned_url("put_object",
+      Params={"Bucket": "ph1-bucket", "Key": "uploads/report.txt"}, ExpiresIn=300))
+EOF
+```
+
+Paste that URL into:
+
+```sh
+echo data > /tmp/x.txt
+curl -s -X PUT --upload-file /tmp/x.txt "<PRESIGNED_PUT_URL>"
+aws s3 ls s3://ph1-bucket/uploads/     # report.txt is there — uploaded via curl
+```
+  </Run>
+  <Verify>
+    - `aws s3 ls s3://ph1-bucket/uploads/` lists `report.txt`, uploaded via curl
+  </Verify>
+</Lab>
+
+## What changes on real AWS
+
+<RealAws title="A presigned URL never exceeds its signer">
+  Presigned URLs are generated against **real** credentials — their power is capped by that identity's IAM permissions; a presigned URL can never exceed its signer's rights.
+</RealAws>
+
+<RealAws title="CORS for browser uploads">
+  For browser uploads, combine with a **CORS configuration** on the bucket (a document saying which origins may PUT) — a frequent "works in curl, blocked in browser" trap; the failure surfaces as a CORS error, not an S3 error.
+</RealAws>
+
+<Note>
+  If you need revocable, audited, expiring shares: that is not presigning — that is STS temporary credentials or an access-grants layer.
+</Note>
+
+<Recap>
+
+- A presigned URL is a normal S3 URL plus a SigV4 query signature: action, credential scope and expiry.
+- Whoever holds the URL has the access until expiry, and you cannot revoke it.
+- A presigned PUT lets browsers upload directly to S3 while your server only issues the URL.
+
+</Recap>

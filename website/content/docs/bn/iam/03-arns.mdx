@@ -1,0 +1,99 @@
+---
+title: ARN
+description: Amazon Resource Name — প্রতিটি সার্ভিস, পলিসি ও লগ লাইনের সাধারণ ঠিকানা ব্যবস্থা। একবার পার্স করা শেখো, সব জায়গায় কাজে লাগবে।
+time: ৮ মিনিট
+needs:
+  - পলিসি ও evaluation
+learn:
+  - ARN-এর ছয় অংশ আর প্রতিটির অর্থ
+  - S3 ও IAM ARN-এ কেন কিছু ফিল্ড ফাঁকা
+  - Policy-র ARN কেন blast radius ঠিক করে
+---
+
+## ছয় অংশ, একটি ঠিকানা
+
+**ARN** (Amazon Resource Name) হলো যেকোনো AWS resource-এর গ্লোবাল ঠিকানা। Policy ARN টার্গেট করে; log ARN উল্লেখ করে; event message ARN বহন করে; CLI আউটপুট এতে ভরা — `make demo`-র দিন থেকেই তুমি পড়ছ।
+
+<Figures>
+  <Figure tag="পাঁচটি ফিল্ডই ভরা" caption="একটি DynamoDB table">
+    <Arn arn="arn:aws:dynamodb:eu-west-1:000000000000:table/demo-table" />
+  </Figure>
+  <Figure tag="region ও account ফাঁকা" caption="একটি S3 bucket">
+    <Arn arn="arn:aws:s3:::ph1-bucket" />
+  </Figure>
+</Figures>
+
+`arn:aws:dynamodb:eu-west-1:000000000000:table/demo-table` বাঁ থেকে ডানে পড়লে:
+
+- `arn` — আক্ষরিকভাবে "arn"
+- `aws` — partition: aws (বাণিজ্যিক), aws-cn (চীন), aws-us-gov
+- `dynamodb` — service namespace
+- `eu-west-1` — region (কিছু সার্ভিসে থাকে না — নিচে দেখো)
+- `000000000000` — account ID (LocalStack: সবসময় 000000000000)
+- `table/demo-table` — resource ধরন + id
+
+সাধারণ রূপ:
+
+```
+arn:partition:service:region:account-id:resource
+```
+
+## Resource অংশ বদলায়
+
+`resource` অংশ সার্ভিসভেদে বদলায় — এখানেই লোক হোঁচট খায়:
+
+| সার্ভিস  | Resource অংশ                                        | কেন                                                                                                        |
+| -------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| DynamoDB | `table/Name` বা `table/Name/index/GSI`              | table _এবং তার index_ আলাদাভাবে addressable                                                                |
+| S3       | `bucket` বা `bucket/key/path`                       | **region নেই, account নেই** — bucket নাম already globally unique ([object model](/bn/s3/01-object-model/)) |
+| IAM      | `user/Bob`, `role/report-reader`, `policy/TodoRead` | **region নেই** — IAM global; region-less                                                                   |
+| SQS      | `queue-name` (কোনো ধরন-প্রিফিক্স নেই)               | কাঁচা — ভুল পড়ার উপকরণ                                                                                    |
+| Lambda   | `function:name:version`                             | slash-এর বদলে colon                                                                                        |
+
+Policy-তে wildcard `*`: `arn:aws:s3:::ph1-bucket/public/*` (`public/`-এর সব object), `arn:aws:s3:::*` (অ্যাকাউন্টের সব bucket — সাধারণত গন্ধ খারাপ)।
+
+## তিনটি ARN ভেঙে দেখো
+
+<Lab title="API নেই, শুধু চোখ" time="~৪ মিনিট">
+  <Predict>
+    এই phase-এ তুমি already ARN জমা করেছ। নিচের কমান্ডগুলো যে ARN ছাপে, প্রতিটির জন্য লেখো: partition, service, region (আছে? কেন/কেন না?), account, resource ধরন, resource id।
+
+    <Answer>
+      দুটি চেনা মুখ: `arn:aws:iam::000000000000:role/report-reader` — region নেই (IAM global); `arn:aws:s3:::ph1-bucket` — region _এবং_ account নেই (global নেমস্পেস)।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+aws s3api list-buckets --query 'Buckets[].Name'
+aws dynamodb list-tables
+aws iam list-roles --query 'Roles[].Arn' --output table
+```
+  </Run>
+  <Verify>
+    - প্রতিটি ARN partition, service, region, account ও resource-এ ভাগ হয়
+    - কোনো region বা account ফাঁকা হলে কেন ফাঁকা বলতে পারো
+  </Verify>
+</Lab>
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws title="Regional ARN">
+  Region-সহ ARN মানে resource-টি regional — `arn:aws:dynamodb:eu-west-1:...` অনুমতি `us-east-1`-এ মূল্যহীন।
+</RealAws>
+
+<RealAws title="ARN-ই blast radius ঠিক করে">
+  Policy-তে ARN-ই _blast radius_ ঠিক করে: `Resource: "arn:aws:s3:::bucket/todo/*"` আর `Resource: "*"`-এর পার্থক্য হলো ছোট ঘটনা আর career-সংজ্ঞায়নকারী দুর্ঘটনার পার্থক্য।
+</RealAws>
+
+<Note title="নাম ARN নয়">
+  কোনো টুল "the ARN" চাইলে সে সবসময় এই পূর্ণ স্ট্রিংটাই চায় — কখনো শুধু নাম নয়।
+</Note>
+
+<Recap>
+
+- ARN মানে arn:partition:service:region:account-id:resource।
+- Resource অংশ সার্ভিসভেদে আলাদা; S3 ও IAM-এ কিছু ফিল্ড ফাঁকা।
+- Policy-র ARN ঠিক করে ভুল হলে কতটা ক্ষতি হবে।
+
+</Recap>

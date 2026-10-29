@@ -10,7 +10,7 @@ volume/
 # --- Node / website ---
 node_modules/
 dist/
-.astro/
+.next/
 coverage/
 *.log
 npm-debug.log*

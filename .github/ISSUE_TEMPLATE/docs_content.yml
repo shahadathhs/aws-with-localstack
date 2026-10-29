@@ -1,0 +1,24 @@
+name: Docs or content fix
+description: A lesson is wrong, unclear, outdated, or badly translated.
+labels: [documentation]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: URL or path under `website/content/docs/`.
+    validations:
+      required: true
+  - type: dropdown
+    id: language
+    attributes:
+      label: Language
+      options: [English, Bangla, Both]
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong, and what should it say?
+    validations:
+      required: true

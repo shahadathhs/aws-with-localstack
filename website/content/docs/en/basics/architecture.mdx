@@ -1,0 +1,102 @@
+---
+title: How LocalStack works — the mental model
+description: One gateway port, fake account routing, DNS tricks and sibling Lambda containers — how LocalStack emulates AWS.
+time: 5 min
+needs:
+  - AWS CLI basics — how it's configured
+learn:
+  - How one port serves every AWS service
+  - What the fake account ID and region really are
+  - Why Lambda needs docker.sock and where state lives
+---
+
+Official references: [Installation](https://docs.localstack.cloud/aws/getting-started/installation/) · [Connecting / AWS CLI](https://docs.localstack.cloud/aws/connecting/aws-cli/) · [Networking](https://docs.localstack.cloud/aws/customization/networking/) · [Credentials](https://docs.localstack.cloud/aws/connecting/credentials/)
+
+## One API, a different destination
+
+LocalStack keeps the **AWS API protocol** but swaps the **destination**. Your tools can't tell the difference — which is why any AWS CLI, SDK, or Terraform code works unchanged, just pointed at `localhost:4566`.
+
+<Figure caption="everything stays on your machine"><Gateway /></Figure>
+
+What happens to `aws --profile localstack s3 ls`, step by step:
+
+```text
+$ aws --profile localstack s3 ls
+
+1. profile lookup: ~/.aws/config
+   → endpoint_url = localhost.localstack.cloud:4566
+   → credentials  = test/test (never validated!)
+   localhost.localstack.cloud ──DNS──► 127.0.0.1
+   (LocalStack owns this public DNS wildcard on purpose)
+
+2. plain HTTP (no internet, no TLS, no real auth)
+
+3. EDGE GATEWAY :4566 (one port = all services) asks "which service is this?"
+   and reads it from:
+     • URL path       /demo-queue
+     • hostname       s3.localhost...
+     • SigV4 signature + headers
+
+4. Lambda: runs your function in sibling containers through docker.sock
+```
+
+All state lives in container memory (it dies with `make clean`).
+
+## The fake account and region
+
+They're just **labels** LocalStack stamps on everything:
+
+|            | Real AWS                                                   | LocalStack                                                  |
+| ---------- | ---------------------------------------------------------- | ----------------------------------------------------------- |
+| ARN        | `arn:aws:dynamodb:eu-west-1:123456789012:table/demo-table` | `arn:aws:dynamodb:eu-west-1:000000000000:table/demo-table`  |
+| Account ID | your real 12-digit ID                                      | always `000000000000`                                       |
+| Region     | actual datacenter                                          | whatever you claim                                          |
+| Auth       | IAM, policies, MFA, signing validation                     | none — any credentials accepted (`test/test` is convention) |
+
+The `test/test` credentials exist only because the AWS CLI _refuses_ to send a request without some. Requests are still SigV4-signed — but nothing checks the signature, and the gateway reads the service/region out of it as routing hints.
+
+<RealAws title="Nothing is checked here">
+  On real AWS, IAM, policies, MFA and signature validation decide who may do what. LocalStack accepts any credentials, so a command that works here can still be denied on real AWS.
+</RealAws>
+
+## The one gateway port
+
+Real AWS spreads services across hundreds of hostnames (`s3.amazonaws.com`, `sqs.eu-west-1.amazonaws.com`, ...). LocalStack serves **everything on one endpoint** (`:4566`) and routes by inspecting each request:
+
+- **URL path** — SQS: `/000000000000/demo-queue`
+- **Hostname prefix** — S3 virtual-host style: `demo-bucket.s3.localhost.localstack.cloud`
+- **Headers / signature** — DynamoDB uses `X-Amz-Target`, and every SigV4 signature names its service
+
+This is also why `localhost.localstack.cloud` exists: it's a public DNS wildcard (`*.localhost.localstack.cloud` → `127.0.0.1`) owned by LocalStack, so hostname-based addressing works exactly like real AWS without editing `/etc/hosts`.
+
+## Lambda is special: docker.sock
+
+Most services are emulated _inside_ the LocalStack container. Lambda actually **executes your code** — it does that by launching _sibling_ Docker containers through the mounted `/var/run/docker.sock`. That's why the compose file requires the socket mount, and why Lambda functions behave so realistically.
+
+## State and lifetime
+
+- Resources (buckets, queues, tables...) live in **container memory** — they survive `make restart`, die with the container, and `make clean` wipes everything
+- Persistence across full restarts is a Pro feature (`PERSISTENCE` env var — set to `0` by default in this repo's compose, inactive on the free tier)
+
+<Note title="In LocalStack">
+  `make clean` stops the container and deletes all data. Rebuild your buckets, queues and tables afterwards.
+</Note>
+
+## Real vs fake, layer by layer
+
+| Layer      | Real AWS                     | LocalStack                                    |
+| ---------- | ---------------------------- | --------------------------------------------- |
+| Addressing | `s3.eu-west-1.amazonaws.com` | `localhost.localstack.cloud:4566` → 127.0.0.1 |
+| Identity   | IAM users, roles, policies   | everyone is `000000000000`, allow-all         |
+| Data plane | Amazon's actual fleets       | service emulators in one container            |
+| Billing    | per-request costs            | free                                          |
+
+Prerequisite reading: [AWS CLI basics](/en/basics/aws-cli/) — explains the profile/endpoint mechanism LocalStack relies on.
+
+<Recap>
+
+- LocalStack keeps the AWS API protocol and swaps the destination: one gateway on `:4566` routes by path, hostname and signature.
+- The account ID `000000000000` and the region are only labels, and no credentials are ever validated.
+- Lambda runs in sibling containers through `docker.sock`; all state is in container memory and `make clean` wipes it.
+
+</Recap>

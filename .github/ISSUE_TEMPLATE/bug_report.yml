@@ -1,0 +1,41 @@
+name: Bug report
+description: A command, script, or the docs site does not work as documented.
+labels: [bug]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - LocalStack setup (compose, Makefile, scripts)
+        - Lesson commands or examples
+        - Docs site (website)
+        - CI / tooling
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect instead? Include the exact commands you ran.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Docker version, AWS CLI version, LocalStack image tag, browser (for site bugs).
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: "`make logs` output, command errors, or screenshots of UI bugs."
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I set a valid `LOCALSTACK_AUTH_TOKEN` in `.env`
+        - label: I checked that this is not already reported

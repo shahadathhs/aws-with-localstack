@@ -1,0 +1,11 @@
+{
+  "title": "S3",
+  "pages": [
+    "01-object-model",
+    "02-versioning",
+    "03-storage-classes-and-lifecycle",
+    "04-presigned-urls",
+    "05-security-and-encryption",
+    "06-events"
+  ]
+}

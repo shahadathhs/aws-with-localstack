@@ -1,0 +1,74 @@
+<!doctype html><meta charset=utf-8><link rel=stylesheet href=common.css><script src=common.js></script>
+<body>
+<header class=top><div class=in><div class=brand><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M4 18V7M4 7l8 4M12 11l8-4M12 11v9M20 7v11"/><circle cx="4" cy="7" r="1.6" fill="var(--accent)"/><circle cx="12" cy="11" r="1.6" fill="var(--accent)"/><circle cx="20" cy="7" r="1.6" fill="var(--accent)"/></svg>AWS with LocalStack</div><nav><span style="color:var(--text);font-weight:600">Learning plan</span><span>Getting started</span><span>Basics</span></nav><span class=sp></span>
+<div class=search><i data-i=search></i>Search<span class=kbd>⌘K</span></div><span class=pill>EN | বাং</span><i data-i=sun></i></div></header>
+<div class=col>
+<div class=sec style="border-top:0;padding-top:64px;display:grid;grid-template-columns:1fr 420px;gap:44px;align-items:start">
+ <div>
+  <div class=label><b>AWS</b> · on LocalStack · free</div>
+  <h1>Predict it.<br>Run it.<br>Check it.</h1>
+  <p class=lead>A hands-on AWS course that runs on your laptop. Read the model, write down what AWS will do, run the commands on LocalStack, compare. No account, no bill.</p>
+  <div style="display:flex;gap:12px;margin-top:28px"><span class="btn primary">Start with S3 <i data-i=arrow></i></span><span class=btn>Set up LocalStack</span></div>
+  <p class="mono faint" style="margin-top:18px">make up &nbsp;→&nbsp; http://localhost:4566</p>
+ </div>
+ <div class=nb>
+  <div class=hd><span>lab · s3 / versioning</span><span>eu-west-1</span></div>
+  <div class=row><span class="tag predict">predict</span><div style="font-size:14px">PUT, PUT, DELETE on one key with versioning on. How many versions? What does GET return?</div><div class="mono" style="font-size:12.5px;margin-top:6px;color:var(--accent)">my guess: 2 versions, GET returns v2</div></div>
+  <div class=row><span class="tag run">run</span><pre style="margin-top:2px"><span class=p>$</span> aws s3api list-object-versions \
+    --bucket ph1-bucket \
+    --query '[length(Versions),length(DeleteMarkers)]' \
+    --output text
+<span class=o>2    1</span>
+<span class=p>$</span> aws s3api get-object --bucket ph1-bucket \
+    --key note.txt out.txt
+<span class=r>NoSuchKey</span></pre></div>
+  <div class=row><span class="tag verify">verify</span><div style="font-size:14px;color:var(--text2)">Close: 2 versions and 1 delete marker. The marker is the newest entry, so reading the key fails with NoSuchKey.</div></div>
+ </div>
+</div>
+<div class=sec><div class=label><b>01</b> / See the model</div><h2 style="margin-bottom:22px">Every lesson draws the idea before it types a command.</h2>
+ <div class=fig>
+  <div><svg viewBox="0 0 300 190">
+<text x="20" y="22" class="t-main">key: note.txt</text>
+<rect x="20" y="34" width="150" height="38" rx="3" class="b-deny" stroke-dasharray="4 3"/><text x="32" y="57" class="t-deny">v3  delete marker</text>
+<rect x="20" y="78" width="150" height="38" rx="3" class="bx"/><text x="32" y="101" class="t-main">v2  "second draft"</text>
+<rect x="20" y="122" width="150" height="38" rx="3" class="bx"/><text x="32" y="145">v1  "first draft"</text>
+<path d="M200 53H176" class="ln" marker-end="url(#a)"/><text x="206" y="50" class="t-main">GET</text><text x="206" y="64" class="t-deny">404</text>
+<path d="M200 97H176" class="ln"/><text x="206" y="94">?versionId=v2</text><text x="206" y="108" class="t-ok">200</text>
+<text x="20" y="178">3 entries stored, 3 billed</text>
+</svg><div class=meta><div class=label>S3 · 02</div><h3>A delete is a new version</h3><p>Versioning turns a key into a stack; DELETE pushes a marker.</p><span class=more>Read the lesson →</span></div></div>
+  <div><svg viewBox="0 0 300 190">
+<rect x="14" y="14" width="124" height="34" rx="3" class="bx"/><text x="26" y="35" class="t-main">explicit Deny?</text>
+<path d="M138 31H186" class="ln"/><text x="150" y="25">yes</text><rect x="186" y="14" width="100" height="34" rx="3" class="b-deny"/><text x="212" y="35" class="t-deny">DENY</text>
+<path d="M76 48V76" class="ln"/><text x="82" y="66">no</text>
+<rect x="14" y="76" width="124" height="34" rx="3" class="bx"/><text x="26" y="97" class="t-main">explicit Allow?</text>
+<path d="M138 93H186" class="ln"/><text x="150" y="87">yes</text><rect x="186" y="76" width="100" height="34" rx="3" class="b-ok"/><text x="208" y="97" class="t-ok">ALLOW</text>
+<path d="M76 110V138" class="ln"/><text x="82" y="128">no</text>
+<rect x="14" y="138" width="124" height="34" rx="3" class="bx" stroke-dasharray="4 3"/><text x="26" y="159">nothing matched</text>
+<path d="M138 155H186" class="ln"/><rect x="186" y="138" width="100" height="34" rx="3" class="b-deny" stroke-dasharray="4 3"/><text x="196" y="159" class="t-deny" style="font-size:10px">implicit DENY</text>
+</svg><div class=meta><div class=label>IAM · 02</div><h3>Deny beats allow</h3><p>The order policies are evaluated in, and why the default is no.</p><span class=more>Read the lesson →</span></div></div>
+  <div><svg viewBox="0 0 300 190">
+<text x="14" y="30" style="font-size:11px"><tspan fill="var(--text3)">arn</tspan><tspan fill="var(--text3)">:</tspan><tspan fill="var(--c1)">aws</tspan><tspan fill="var(--text3)">:</tspan><tspan fill="var(--c2)">sqs</tspan><tspan fill="var(--text3)">:</tspan><tspan fill="var(--c3)">eu-west-1</tspan><tspan fill="var(--text3)">:</tspan><tspan fill="var(--c4)">000000000000</tspan><tspan fill="var(--text3)">:</tspan><tspan fill="var(--c5)">orders</tspan></text>
+<g font-size="10.5">
+<circle cx="22" cy="62" r="4" fill="var(--c1)"/><text x="34" y="66">partition</text><text x="132" y="66" class="t-main">aws</text>
+<circle cx="22" cy="86" r="4" fill="var(--c2)"/><text x="34" y="90">service</text><text x="132" y="90" class="t-main">sqs</text>
+<circle cx="22" cy="110" r="4" fill="var(--c3)"/><text x="34" y="114">region</text><text x="132" y="114" class="t-main">eu-west-1</text>
+<circle cx="22" cy="134" r="4" fill="var(--c4)"/><text x="34" y="138">account</text><text x="132" y="138" class="t-main">000000000000</text>
+<circle cx="22" cy="158" r="4" fill="var(--c5)"/><text x="34" y="162">resource</text><text x="132" y="162" class="t-main">orders</text></g>
+</svg><div class=meta><div class=label>IAM · 03</div><h3>Read any ARN</h3><p>Five fields, one address; why S3 leaves two of them empty.</p><span class=more>Read the lesson →</span></div></div>
+ </div></div>
+<div class=sec><div class=label><b>02</b> / Curriculum</div>
+ <table class=ledger><tr><th>Phase</th><th>Topic</th><th>Lessons</th><th style="text-align:right">Status</th></tr>
+ <tr><td>0</td><td><b>Tooling</b><div class=faint>Compose, AWS CLI, profiles, how LocalStack routes requests</div></td><td><span class=bar><i class=on></i><i class=on></i><i class=on></i><i class=on></i></span></td><td style="text-align:right" class="st done">done</td></tr>
+ <tr><td>1</td><td><b>S3 and IAM</b><div class=faint>Object model, versioning, presigned URLs, policies, ARNs</div></td><td><span class=bar><i class=on></i><i class=on></i><i class=on></i><i class=on></i><i class=on></i><i class=on></i><i class=on></i><i class=on></i><i class=on></i></span></td><td style="text-align:right" class="st done">done</td></tr>
+ <tr><td>2</td><td><b>Lambda</b><div class=faint>Execution model, the event object, S3 and SQS triggers</div></td><td><span class=bar><i></i><i></i><i></i></span></td><td style="text-align:right" class="st next">next</td></tr>
+ <tr><td>3</td><td><b>API Gateway + DynamoDB</b><div class=faint>The serverless chain; design tables around queries</div></td><td><span class=bar><i></i><i></i><i></i></span></td><td style="text-align:right" class="st plan">planned</td></tr>
+ <tr><td>4</td><td><b>SQS, SNS, EventBridge</b><div class=faint>Messaging, retries, fan-out, dead-letter queues</div></td><td><span class=bar><i></i><i></i><i></i></span></td><td style="text-align:right" class="st plan">planned</td></tr></table></div>
+<div class=sec><div class=label><b>03</b> / The short list</div><div class=short>
+ <div><b>Free and local</b><p>LocalStack in Docker. Nothing touches a real AWS account.</p></div>
+ <div><b>Concept first</b><p>Guarantees, failure modes and cost drivers, not command memorising.</p></div>
+ <div><b>Honest about limits</b><p>Each lesson says what LocalStack skips, like IAM enforcement.</p></div>
+ <div><b>English and Bangla</b><p>Every lesson in both languages.</p></div>
+ <div><b>Real AWS notes</b><p>What differs on the real service, and what it costs.</p></div>
+ <div><b>Open source</b><p>Markdown in the repo; fix a lesson with a pull request.</p></div></div></div>
+<footer class=bot><div><b>Learn</b>Learning plan<br>S3<br>IAM</div><div><b>Set up</b>Docker Compose<br>AWS CLI<br>How LocalStack works</div><div><b>Project</b>GitHub<br>Author<br>বাংলা</div></footer>
+</div>

@@ -1,0 +1,31 @@
+<!doctype html><meta charset=utf-8><link rel=stylesheet href=common.css><script src=common.js></script>
+<body class=m><header class=top><div class=in><div class=brand><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M4 18V7M4 7l8 4M12 11l8-4M12 11v9M20 7v11"/><circle cx="4" cy="7" r="1.6" fill="var(--accent)"/><circle cx="12" cy="11" r="1.6" fill="var(--accent)"/><circle cx="20" cy="7" r="1.6" fill="var(--accent)"/></svg>AWS with LocalStack</div><span class=sp></span><span class=ib><i data-i=search></i></span><span class=ib><i data-i=menu></i></span></div></header>
+<div style="padding:20px 16px 0">
+ <div class=label style="margin-bottom:6px"><b>S3</b> / lesson 2 of 6 · 8 min</div>
+ <h1 style="font-size:38px">Versioning</h1>
+ <p style="font-size:16px;color:var(--text2);margin-top:8px">Delete markers, restores, noncurrent versions, and why enabling it is a one-way door.</p>
+ <div class=toc-m><span>On this page</span><i data-i=chev></i></div>
+</div>
+<main class=article style="padding:4px 16px 40px">
+ <h2>Concept</h2>
+ <p>Without versioning, writing to an existing key <b>overwrites and destroys</b> the previous bytes. With it on, every write adds an immutable <b>version</b>, and a key becomes a stack.</p>
+ <div style="border:1px solid var(--line);border-radius:8px;background:var(--raised);margin:14px 0"><svg viewBox="0 0 300 190">
+<text x="20" y="22" class="t-main">key: note.txt</text>
+<rect x="20" y="34" width="150" height="38" rx="3" class="b-deny" stroke-dasharray="4 3"/><text x="32" y="57" class="t-deny">v3  delete marker</text>
+<rect x="20" y="78" width="150" height="38" rx="3" class="bx"/><text x="32" y="101" class="t-main">v2  "second draft"</text>
+<rect x="20" y="122" width="150" height="38" rx="3" class="bx"/><text x="32" y="145">v1  "first draft"</text>
+<path d="M200 53H176" class="ln" marker-end="url(#a)"/><text x="206" y="50" class="t-main">GET</text><text x="206" y="64" class="t-deny">404</text>
+<path d="M200 97H176" class="ln"/><text x="206" y="94">?versionId=v2</text><text x="206" y="108" class="t-ok">200</text>
+<text x="20" y="178">3 entries stored, 3 billed</text>
+</svg></div>
+ <table><tr><th>Operation</th><th>Without</th><th>With</th></tr><tr><td>PUT same key</td><td>replaces</td><td>new version</td></tr><tr><td>DELETE key</td><td>gone</td><td>delete marker</td></tr></table>
+ <h2>Experiment</h2>
+ <div class=nb style="margin:12px 0"><div class=row><span class="tag predict">predict first</span><div style="font-size:14px;color:var(--text2)">After PUT, PUT, DELETE: how many versions exist, and what does a plain GET return?</div></div></div>
+ <div style="position:relative"><span class=copy>Copy</span><pre style="overflow-x:auto;white-space:pre;font-size:12px"><span class=p>$</span> aws s3api put-bucket-versioning --bucket ph1-bucket \
+    --versioning-configuration Status=Enabled
+<span class=p>$</span> aws s3 cp v1.txt s3://ph1-bucket/note.txt
+<span class=p>$</span> aws s3 cp v2.txt s3://ph1-bucket/note.txt
+<span class=p>$</span> aws s3 rm s3://ph1-bucket/note.txt</pre></div>
+ <div class="note real"><span class=k>Real AWS</span>Every stored version is billed. Add a lifecycle rule to expire noncurrent versions.</div>
+ <div class=pager style="flex-direction:column"><div><small>← Previous</small>The object model</div><div style="text-align:right"><small>Next →</small>Storage classes and lifecycle</div></div>
+</main>

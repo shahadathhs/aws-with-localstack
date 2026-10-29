@@ -1,0 +1,32 @@
+# Based on the official example:
+# https://docs.localstack.cloud/aws/getting-started/installation/#docker-compose
+services:
+  localstack:
+    container_name: '${LOCALSTACK_DOCKER_NAME:-localstack-main}'
+    # Same as `latest` (2026.9.0, released 2026-10-02) but pinned for
+    # reproducibility. Bump the tag deliberately when a new version ships.
+    image: localstack/localstack:2026.9.0
+    ports:
+      - '127.0.0.1:4566:4566'            # LocalStack Gateway (all services)
+      - '127.0.0.1:4510-4559:4510-4559'  # external services port range
+      - '127.0.0.1:443:443'              # LocalStack HTTPS Gateway (remove if 443 is taken on your machine)
+    environment:
+      # Required since 2026.x — get a free token at https://app.localstack.cloud
+      # https://docs.localstack.cloud/getting-started/auth-token/
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:?}
+      # LocalStack configuration: https://docs.localstack.cloud/references/configuration/
+      - DEBUG=${DEBUG:-0}
+      - PERSISTENCE=${PERSISTENCE:-0}
+      # 1 (LocalStack's default) skips signature and expiry checks on presigned URLs; set 0 to enforce them.
+      - S3_SKIP_SIGNATURE_VALIDATION=${S3_SKIP_SIGNATURE_VALIDATION:-1}
+    volumes:
+      - '${LOCALSTACK_VOLUME_DIR:-./volume}:/var/lib/localstack'
+      - '/var/run/docker.sock:/var/run/docker.sock'
+    # Not in the official example: lets `docker compose up --wait`
+    # block until LocalStack is actually ready to serve requests.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s

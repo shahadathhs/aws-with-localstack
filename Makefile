@@ -1,6 +1,6 @@
-COMPOSE := docker compose
+COMPOSE := docker compose --project-directory . -f infra/compose.yaml
 
-.PHONY: help up down restart logs status setup-cli aws demo clean site-install site-dev site-build site-lint
+.PHONY: help up down restart logs status setup-cli aws demo clean site-install site-dev site-build site-lint screenshots
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -22,26 +22,30 @@ status: ## Show service health
 	@curl -s http://localhost:4566/_localstack/health | python3 -m json.tool
 
 setup-cli: ## Create the 'localstack' AWS CLI profile in ~/.aws (one-time)
-	./scripts/setup-aws-profile.sh
+	./infra/scripts/setup-aws-profile.sh
 
 aws: ## Run an AWS CLI command against LocalStack, e.g. make aws CMD="s3 ls"
 	@AWS_PROFILE=localstack aws $(CMD)
 
 demo: ## Run a guided S3 + SQS + DynamoDB demo
-	./scripts/demo.sh
+	./labs/quickstart/demo.sh
 
 clean: ## Stop LocalStack and DELETE all data
 	$(COMPOSE) down -v
 	rm -rf volume .localstack-data
 
 site-install: ## Install docs site dependencies (pnpm)
-	pnpm --dir website install
+	cd website && pnpm install
 
-site-dev: ## Run docs site dev server at http://localhost:4321
-	pnpm --dir website dev
+site-dev: ## Run docs site dev server at http://localhost:3000
+	cd website && pnpm dev
 
-site-build: ## Build docs site into website/dist
-	pnpm --dir website build
+site-build: ## Build the docs site (website/.next)
+	cd website && pnpm build
 
-site-lint: ## Lint + format-check the docs site (oxlint, eslint, prettier)
-	pnpm --dir website lint
+site-lint: ## Lint and type-check the docs site (oxlint, tsc)
+	cd website && pnpm lint
+	cd website && pnpm types:check
+
+screenshots: ## Re-render the README screenshots from the built site (needs Google Chrome)
+	cd website && pnpm build && pnpm screenshots

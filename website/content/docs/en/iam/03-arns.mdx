@@ -1,0 +1,99 @@
+---
+title: ARNs
+description: The Amazon Resource Name — the addressing system every service, policy, and log line shares. Learn to parse it once, use it everywhere.
+time: 8 min
+needs:
+  - Policies and evaluation
+learn:
+  - The six parts of an ARN and what each one means
+  - Why S3 and IAM ARNs leave fields empty
+  - Why the ARN in a policy sets the blast radius
+---
+
+## Six parts, one address
+
+An **ARN** (Amazon Resource Name) is the global address of any AWS resource. Policies target ARNs; logs cite ARNs; event messages carry ARNs; CLI output is full of them — you have been reading them since `make demo`.
+
+<Figures>
+  <Figure tag="all five fields" caption="a DynamoDB table">
+    <Arn arn="arn:aws:dynamodb:eu-west-1:000000000000:table/demo-table" />
+  </Figure>
+  <Figure tag="empty region and account" caption="an S3 bucket">
+    <Arn arn="arn:aws:s3:::ph1-bucket" />
+  </Figure>
+</Figures>
+
+Reading `arn:aws:dynamodb:eu-west-1:000000000000:table/demo-table` left to right:
+
+- `arn` — literally "arn"
+- `aws` — partition: aws (commercial), aws-cn (China), aws-us-gov
+- `dynamodb` — service namespace
+- `eu-west-1` — region (some services omit it — see below)
+- `000000000000` — account ID (LocalStack: always 000000000000)
+- `table/demo-table` — resource type + id
+
+The general form:
+
+```
+arn:partition:service:region:account-id:resource
+```
+
+## The resource part varies
+
+The `resource` part varies by service — this is where people trip:
+
+| Service  | Resource portion                                    | Why                                                                                                                |
+| -------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| DynamoDB | `table/Name` or `table/Name/index/GSI`              | tables _and their indexes_ are separately addressable                                                              |
+| S3       | `bucket` or `bucket/key/path`                       | **no region, no account** — bucket names are already globally unique (see [object model](/en/s3/01-object-model/)) |
+| IAM      | `user/Bob`, `role/report-reader`, `policy/TodoRead` | **no region** — IAM is global; region-less                                                                         |
+| SQS      | `queue-name` (no type prefix)                       | bare, easy to misread                                                                                              |
+| Lambda   | `function:name:version`                             | colons instead of slashes                                                                                          |
+
+Wildcards in policies use `*`: `arn:aws:s3:::ph1-bucket/public/*` (every object under `public/`), `arn:aws:s3:::*` (every bucket in the account — usually a smell).
+
+## Take three ARNs apart
+
+<Lab title="no API, just eyes" time="~4 min">
+  <Predict>
+    You have already collected ARNs in this phase. For each ARN printed by the commands below, write down: partition, service, region (present? why/why not?), account, resource type, resource id.
+
+    <Answer>
+      Two you will meet: `arn:aws:iam::000000000000:role/report-reader` has no region (IAM is global); `arn:aws:s3:::ph1-bucket` has no region _and_ no account (global namespace).
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+aws s3api list-buckets --query 'Buckets[].Name'
+aws dynamodb list-tables
+aws iam list-roles --query 'Roles[].Arn' --output table
+```
+  </Run>
+  <Verify>
+    - Each ARN splits into partition, service, region, account and resource
+    - You can say why a region or account is empty when it is
+  </Verify>
+</Lab>
+
+## What changes on real AWS
+
+<RealAws title="Regional ARNs">
+  Region-full ARNs mean the resource is regional — a policy granting `arn:aws:dynamodb:eu-west-1:...` grants nothing in `us-east-1`.
+</RealAws>
+
+<RealAws title="The ARN sets the blast radius">
+  In policies, ARNs are the _scope of blast radius_: the difference between `Resource: "arn:aws:s3:::bucket/todo/*"` and `Resource: "*"` is the difference between a small incident and a career-defining one.
+</RealAws>
+
+<Note title="Names are not ARNs">
+  When a tool asks for "the ARN" it always means this full string — never a name.
+</Note>
+
+<Recap>
+
+- An ARN is arn:partition:service:region:account-id:resource.
+- The resource part differs per service; S3 and IAM leave fields empty.
+- The ARN in a policy decides how much can go wrong.
+
+</Recap>
