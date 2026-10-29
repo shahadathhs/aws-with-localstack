@@ -37,14 +37,11 @@ IAM:
 
 ## Phase 2 — কম্পিউট: Lambda
 
-লেসন পেজগুলো ধাপে ধাপে লেখা হবে — ততক্ষণ লক্ষ্যগুলো:
+1. [এক্সিকিউশন মডেল](/bn/lambda/01-execution-model/) — sandbox-এ handler; cold বনাম warm; আলাদা instance হিসেবে concurrency; timeout ও memory
+2. [Event object](/bn/lambda/02-the-event-object/) — ফাংশন কেন invoke হলো; ম্যানুয়াল বনাম S3 event; synchronous বনাম asynchronous কল; লগ
+3. [SQS trigger](/bn/lambda/03-sqs-triggers/) — event source mapping; batch size; আংশিক ব্যর্থতা জানানো; অন্তহীন retry
 
-- Execution model: উষ্ণ sandboxed microVM; cold বনাম warm start; concurrency = instance pool
-- **ইভেন্ট অবজেক্ট**: ফাংশনটি _কেন_ invoke হলো তার JSON বর্ণনা — একই ফাংশন, অনেক trigger shape
-- সীমা: সর্বোচ্চ ১৫ মিনিট, memory slider (memory CPU স্কেল করে), payload ক্যাপ
-- Trigger: S3 event ও SQS message (batch size, retry, partial batch failure)
-
-এক্সপেরিমেন্ট: Lambda ডিপ্লয় করে ম্যানুয়ালি invoke; global counter দিয়ে warmth প্রমাণ; Phase-1 bucket ওয়্যার করা (আপলোড → Lambda); SQS message consume (batch size 1, তারপর 10)।
+এক্সপেরিমেন্ট: Lambda ডিপ্লয় করে ম্যানুয়ালি invoke; global counter দিয়ে warmth প্রমাণ; একটি bucket ওয়্যার করা (আপলোড → Lambda); SQS message batch আকারে consume করে শুধু বিষাক্তটি retry করানো।
 
 ## Phase 3 — সার্ভারলেস চেইন: API Gateway → Lambda → DynamoDB
 

@@ -1,0 +1,127 @@
+---
+title: SQS triggers
+description: Lambda can poll a queue for you. Batch size decides how many messages one call carries, and a failed message comes back on its own.
+time: 12 min
+needs:
+  - The event object
+learn:
+  - How an event source mapping turns a queue into function calls
+  - What batch size and the batching window change
+  - How reporting a partial failure retries only the bad message
+---
+
+## The platform polls for you
+
+A queue cannot call a function. Lambda bridges the gap with an **event source mapping**: a poller, run by the platform, that reads messages from the queue and invokes your function with a batch of them. You write no polling code.
+
+Three settings shape it:
+
+- **Batch size**: the most messages in one call (up to 10 for a standard queue unless you also use a batching window).
+- **Batching window**: how long the poller waits to fill a batch before it calls anyway.
+- **Visibility timeout** (a queue setting): after a message is handed to your function it is hidden. If the call does not succeed it reappears after this time and is delivered again.
+
+If the function returns normally, Lambda deletes the whole batch. If it fails, the whole batch becomes visible again, **including the messages that were fine**. That is why a handler can instead report which messages failed.
+
+## Batches and a poison message
+
+<Lab title="batch of 5, then one bad message" time="~7 min">
+  <Predict>
+    Five messages are waiting, and the batch size is 10. How many invocations do you expect? Later you send `ok1`, `bad` and `ok2` in one go, and the handler reports only `bad` as failed. Which messages are delivered again?
+
+    <Answer>
+      **One invocation with all five.** For the second case, only `bad`, and again after each visibility timeout, because it fails every time. `ok1` and `ok2` were reported as successes and are deleted.
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+mkdir -p /tmp/lam && cd /tmp/lam
+
+cat > batch.py <<'PY'
+def handler(event, context):
+    records = event["Records"]
+    print(f"batch of {len(records)}: " + ", ".join(r["body"] for r in records))
+    failed = [{"itemIdentifier": r["messageId"]} for r in records if r["body"] == "bad"]
+    return {"batchItemFailures": failed}
+PY
+zip batch.zip batch.py
+aws lambda create-function --function-name batcher --runtime python3.12 \
+  --handler batch.handler --zip-file fileb://batch.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name batcher
+```
+
+The handler returns the ids of the messages that failed. Create a queue with a short visibility timeout and put five messages in it **before** connecting the function:
+
+```sh
+QUEUE_URL=$(aws sqs create-queue --queue-name work \
+  --attributes VisibilityTimeout=5 --query QueueUrl --output text)
+QUEUE_ARN=$(aws sqs get-queue-attributes --queue-url "$QUEUE_URL" \
+  --attribute-names QueueArn --query Attributes.QueueArn --output text)
+
+for m in a b c d e; do
+  aws sqs send-message --queue-url "$QUEUE_URL" --message-body $m >/dev/null
+done
+
+aws lambda create-event-source-mapping --function-name batcher \
+  --event-source-arn "$QUEUE_ARN" --batch-size 10 \
+  --maximum-batching-window-in-seconds 1 \
+  --function-response-types ReportBatchItemFailures
+
+sleep 8
+aws logs tail /aws/lambda/batcher --since 5m --format short | grep "batch of"
+```
+<Output>
+```text
+2026-10-29T05:09:01 batch of 5: a, b, c, d, e
+```
+</Output>
+
+Now send three messages in one request, one of them poisoned, and watch the log for a while:
+
+```sh
+aws sqs send-message-batch --queue-url "$QUEUE_URL" --entries '[
+  {"Id":"1","MessageBody":"ok1"},
+  {"Id":"2","MessageBody":"bad"},
+  {"Id":"3","MessageBody":"ok2"}
+]'
+sleep 20
+aws logs tail /aws/lambda/batcher --since 5m --format short | grep "batch of" | grep -v "batch of 5"
+```
+  </Run>
+  <Verify>
+    - The first log line is a single `batch of 5`
+    - `ok1`, `bad` and `ok2` arrive together as `batch of 3`; after that, `ok1` and `ok2` never appear again
+    - `bad` comes back every few seconds, about once per visibility timeout, and never stops
+  </Verify>
+</Lab>
+
+<Destructive>
+  A message that always fails never leaves the queue by itself, and each retry is a paid invocation on real AWS. Stop the loop now: `aws lambda delete-event-source-mapping --uuid <UUID>` (find the UUID with `aws lambda list-event-source-mappings --function-name batcher`), then `aws sqs purge-queue --queue-url "$QUEUE_URL"`.
+</Destructive>
+
+## Retries without end
+
+The loop you just saw is what real systems avoid with a **dead-letter queue**: after a message has failed a set number of times, the queue moves it aside, where a person can look at it. The queue lesson in Phase 4 builds that. For now remember the rule: *a handler must be safe to run twice on the same message*, because every retry and every duplicate delivery runs it again.
+
+## What changes on real AWS
+
+<RealAws cost title="Pollers cost requests">
+  The poller calls SQS continuously on your behalf, and every empty receive is a billed request. Lambda also scales the number of pollers with the queue's backlog, so a deep queue can run many function instances at once and overwhelm whatever they write to. Set a maximum concurrency on the mapping to put a ceiling on it.
+</RealAws>
+
+<Note title="Batch size and the visibility timeout">
+  The visibility timeout must be longer than the function's timeout. Otherwise the message reappears while the first call is still working on it, and a second call starts for the same message.
+</Note>
+
+<Note title="In LocalStack">
+  Messages sent one by one can arrive as separate calls of one message each, depending on timing. Sending them in one `send-message-batch` request, or before the mapping exists, is what makes a large batch reproducible.
+</Note>
+
+<Recap>
+
+- An event source mapping polls the queue for you and calls the function with a batch of messages.
+- Return `batchItemFailures` to retry only the messages that failed; without it one failure repeats the whole batch.
+- A message that always fails loops forever, so real queues use a dead-letter queue and handlers are idempotent.
+
+</Recap>

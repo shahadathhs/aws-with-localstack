@@ -1,0 +1,152 @@
+---
+title: Event object
+description: একই ফাংশনকে তুমি, S3 বা একটি queue ডাকতে পারে। শুধু event বদলায়, যা একটি JSON, কেন ডাকা হলো তা বলে দেয়।
+time: ১১ মিনিট
+needs:
+  - এক্সিকিউশন মডেল
+  - ইভেন্ট নোটিফিকেশন
+learn:
+  - ম্যানুয়াল কল আর S3 আপলোডে event দেখতে কেমন
+  - ফাংশনকে কেন event পড়তে হয়, তার গঠন ধরে নিলে চলে না
+  - ফাংশনের আউটপুট লগে কীভাবে খুঁজে পাবে
+---
+
+## একটি ফাংশন, অনেক caller
+
+Handler কখনো জিজ্ঞেস করে না কে ডেকেছে। প্ল্যাটফর্ম একটি `event` পাঠায়, যা একটি JSON, **কেন ফাংশন ডাকা হলো** তা বলে, আর বাকিটা handler নিজে বুঝে নেয়। একই কোড টার্মিনালের একজন মানুষ, S3-এর আপলোড বা queue-র message সামলাতে পারে; বদলায় শুধু event।
+
+| Caller | Event হলো |
+| --- | --- |
+| তুমি, `aws lambda invoke` দিয়ে | তোমার পাঠানো payload হুবহু |
+| S3 | `{"Records": [...]}`, প্রতি object event-এ একটি record |
+| SQS | `{"Records": [...]}`, প্রতি message-এ একটি record, batch আকারে |
+
+`context` আর্গুমেন্ট আলাদা: সেটি এই invocation-এর কথা বলে (request id, আর কত সময় বাকি), কারণের কথা নয়।
+
+ফাংশন ডাকার দুটি উপায় এখানে গুরুত্বপূর্ণ:
+
+- **Synchronous** (ডিফল্ট): তুমি অপেক্ষা করো, আর return value তোমার কাছে ফিরে আসে।
+- **Asynchronous** (`--invocation-type Event`): প্ল্যাটফর্ম কলটি queue-তে রাখে, সঙ্গে সঙ্গে `202` বলে, আর handler চলে পরে। S3 এভাবেই ফাংশন ডাকে, তাই S3 যে handler ডেকেছে তার return value কোথাও যায় না।
+
+## Event নিজের চোখে দেখো
+
+এই ফাংশন শুধু নিজের event ছাপে। যা ছাপে তা ফাংশনের **log group** `/aws/lambda/<name>`-এ জমা হয়।
+
+<Lab title="event ছাপো" time="~৬ মিনিট">
+  <Predict>
+    ফাংশনটিকে `{"a": 1}` দিয়ে invoke করলে। তারপর এতে জোড়া একটি bucket-এ `uploads/f.txt` আপলোড করলে। দুটি event-এর কোনটিতে top-level `Records` কী আছে, আর ফাইলের নাম তাতে কোথায়?
+
+    <Answer>
+      শুধু S3 event-এ। ম্যানুয়াল event হলো কেবল `{"a": 1}`। S3 event-এ `Records[0].s3.object.key` হলো `uploads/f.txt` আর `Records[0].s3.bucket.name` হলো bucket। [S3 ইভেন্ট পাঠের](/bn/s3/06-events/) queue-র মতোই, তুমি object-এর নাম পাও, বিষয়বস্তু নয়।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+export AWS_PROFILE=localstack
+mkdir -p /tmp/lam && cd /tmp/lam
+
+cat > show.py <<'PY'
+import json
+
+
+def handler(event, context):
+    print(json.dumps(event))
+    return {"ok": True}
+PY
+zip show.zip show.py
+aws lambda create-function --function-name show --runtime python3.12 \
+  --handler show.handler --zip-file fileb://show.zip \
+  --role arn:aws:iam::000000000000:role/lambda-role
+aws lambda wait function-active-v2 --function-name show
+```
+
+রোলটি আগের পাঠ থেকে আসে; সেটি বাদ দিয়ে থাকলে ওখানকার কমান্ডে আবার বানাও। প্রথমে একটি ম্যানুয়াল কল, response-এ লগের শেষ অংশ চেয়ে:
+
+```sh
+aws lambda invoke --function-name show --payload '{"a":1}' \
+  --cli-binary-format raw-in-base64-out --log-type Tail out.json \
+  --query LogResult --output text | base64 -d
+```
+<Output>
+```text
+# the REPORT line (timings) is left out, and your request ids differ
+START RequestId: 51326028-ea48-4629-bbc3-61aa1cbc9656 Version: $LATEST
+{"a": 1}
+END RequestId: 51326028-ea48-4629-bbc3-61aa1cbc9656
+```
+</Output>
+
+এবার একটি bucket-কে ফাংশনের সঙ্গে জোড়ো। S3-কে invoke করার অনুমতি দিতে হয়, যা তুমি ফাংশনের **resource policy** দিয়ে দাও:
+
+```sh
+aws s3 mb s3://lam-bucket
+aws lambda add-permission --function-name show --statement-id s3 \
+  --action lambda:InvokeFunction --principal s3.amazonaws.com \
+  --source-arn arn:aws:s3:::lam-bucket
+
+aws s3api put-bucket-notification-configuration --bucket lam-bucket \
+  --notification-configuration '{
+    "LambdaFunctionConfigurations": [{
+      "LambdaFunctionArn": "arn:aws:lambda:eu-west-1:000000000000:function:show",
+      "Events": ["s3:ObjectCreated:*"]
+    }]
+  }'
+
+echo hi > f.txt
+aws s3 cp f.txt s3://lam-bucket/uploads/f.txt
+aws s3 cp f.txt "s3://lam-bucket/uploads/my report.txt"
+sleep 4
+aws logs tail /aws/lambda/show --since 5m --format short
+```
+  </Run>
+  <Verify>
+    - ম্যানুয়াল কল শুধু `{"a": 1}` ছাপল, আর কিছু নয়: event হলো payload
+    - লগে প্রতি আপলোডে একটি `{"Records": [...]}` লাইন, যাতে `"eventSource": "aws:s3"` আর `"eventName": "ObjectCreated:Put"`
+    - `s3.bucket.name` হলো `lam-bucket`, আর `s3.object`-এ আছে `key`, `size` ও `eTag`
+    - দ্বিতীয় key আসে `uploads/my%20report.txt` হয়ে: **key URL-encoded থাকে**
+  </Verify>
+</Lab>
+
+<Lab title="যে কলের জন্য অপেক্ষা করো না" time="~২ মিনিট" collapsed>
+  <Predict>
+    `show`-কে আবার `--invocation-type Event` দিয়ে invoke করলে কোন status code ফেরত আসবে, আর আউটপুট ফাইলে কী থাকবে?
+
+    <Answer>
+      **202**, আর একটি ফাঁকা ফাইল। প্ল্যাটফর্ম কলটি নিয়েছে এবং পরে চালাবে; এখনো ফেরত দেওয়ার কিছু নেই।
+    </Answer>
+  </Predict>
+  <Run>
+```sh
+aws lambda invoke --function-name show --payload '{"a":1}' \
+  --cli-binary-format raw-in-base64-out --invocation-type Event out.json \
+  --query StatusCode --output text
+cat out.json
+```
+  </Run>
+  <Verify>
+    - `202` ছাপা হয়, আর `out.json` ফাঁকা
+    - একটু পরে `aws logs tail /aws/lambda/show --since 1m` দেখায় কলটি চলেছে
+  </Verify>
+</Lab>
+
+## রিয়েল AWS-এ যা বদলায়
+
+<RealAws title="key decode করো">
+  S3 event-এ key URL-encode করে, আর রিয়েল AWS-এ space হয় `%20` নয়, `+`। যে handler `Records[0].s3.object.key` দিয়ে object আনে, তাকে আগে সেটি decode করতে হবে, নইলে সে এমন key খুঁজবে যা নেই।
+</RealAws>
+
+<Note title="একটি record না অনেক">
+  সবসময় `Records`-এর ওপর loop চালাও। এখানে S3 প্রতি আপলোডে একটি record পাঠিয়েছে, কিন্তু গঠনটি list, কারণ queue-র মতো অন্য উৎস একসঙ্গে কয়েকটি পাঠায়।
+</Note>
+
+<Note title="Asynchronous মানে retry">
+  Asynchronous ডাকা ফাংশন ব্যর্থ হলে প্ল্যাটফর্ম ডিফল্টে দুবার retry করে, আর event dead-letter queue বা failure destination-এ পাঠাতে পারে। তাই একটি আপলোডের জন্য তোমার কোড একাধিকবার চলতে পারে; এটি idempotent বানাও।
+</Note>
+
+<Recap>
+
+- Event বলে ফাংশন কেন চলল; ম্যানুয়াল কলে তোমার payload যায়, S3 পাঠায় `Records`।
+- Event সতর্কভাবে পড়ো, আর ব্যবহারের আগে S3 key decode করো।
+- `print`-এর আউটপুট ফাংশনের log group-এ যায়, আর `--log-type Tail` তার শেষ অংশ সঙ্গে সঙ্গে দেখায়।
+
+</Recap>

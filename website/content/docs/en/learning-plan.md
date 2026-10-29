@@ -37,14 +37,11 @@ IAM:
 
 ## Phase 2 — Compute: Lambda
 
-Lesson pages are written as we go — until then, the targets:
+1. [The execution model](/en/lambda/01-execution-model/) — a handler in a sandbox; cold vs warm; concurrency as separate instances; timeout and memory
+2. [The event object](/en/lambda/02-the-event-object/) — why the function was invoked; manual vs S3 events; synchronous vs asynchronous calls; logs
+3. [SQS triggers](/en/lambda/03-sqs-triggers/) — event source mappings; batch size; reporting partial failures; retries without end
 
-- Execution model: warm sandboxed microVMs; cold vs warm starts; concurrency = instance pool
-- The **event object**: JSON describing _why_ the function was invoked — same function, many trigger shapes
-- Limits: 15 min max, memory slider (memory scales CPU), payload caps
-- Triggers: S3 events and SQS messages (batch size, retries, partial batch failures)
-
-Experiments: deploy a Lambda and invoke manually; prove warmth with a global counter; wire the Phase-1 bucket (upload → Lambda); consume SQS messages (batch size 1, then 10).
+Experiments: deploy a Lambda and invoke it manually; prove warmth with a global counter; wire a bucket (upload → Lambda); consume SQS messages in a batch and retry only the poisoned one.
 
 ## Phase 3 — The serverless chain: API Gateway → Lambda → DynamoDB
 

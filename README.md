@@ -147,14 +147,14 @@ endpoint `http://localhost:4566`, the region from `.env` (default `eu-west-1`) a
 
 ## Curriculum
 
-Phases 0 and 1 are written. Later phases are planned and are written as the course grows.
+Phases 0 to 2 are written. Later phases are planned and are written as the course grows.
 
 | Phase | Topic | Status |
 | --- | --- | --- |
 | 0 | **Tooling**: Docker Compose, AWS CLI, profiles, how LocalStack routes requests | written |
 | 1 | **S3** (object model, versioning, storage classes, presigned URLs, security, events) and **IAM** (principals, policies, ARNs) | written |
-| 2 | **Lambda**: execution model, the event object, S3 and SQS triggers | next |
-| 3 | **API Gateway → Lambda → DynamoDB**: the serverless chain | planned |
+| 2 | **Lambda**: execution model, the event object, S3 and SQS triggers | written |
+| 3 | **API Gateway → Lambda → DynamoDB**: the serverless chain | next |
 | 4 | **SQS, SNS, EventBridge**: messaging, retries, fan-out | planned |
 | 5 | **CloudWatch and Secrets Manager**: observability and config | planned |
 | 6 | **Terraform**: rebuild everything as code | planned |

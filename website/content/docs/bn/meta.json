@@ -3,6 +3,7 @@
     "getting-started",
     "basics",
     "s3",
-    "iam"
+    "iam",
+    "lambda"
   ]
 }
