@@ -1,6 +1,6 @@
 COMPOSE := docker compose --project-directory . -f infra/compose.yaml
 
-.PHONY: help up down restart logs status setup-cli aws demo clean site-install site-dev site-build site-lint
+.PHONY: help up down restart logs status setup-cli aws demo clean site-install site-dev site-build site-lint screenshots
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -46,3 +46,6 @@ site-build: ## Build the docs site (website/.next)
 site-lint: ## Lint and type-check the docs site (oxlint, tsc)
 	cd website && pnpm lint
 	cd website && pnpm types:check
+
+screenshots: ## Re-render the README screenshots from the built site (needs Google Chrome)
+	cd website && pnpm build && pnpm screenshots
