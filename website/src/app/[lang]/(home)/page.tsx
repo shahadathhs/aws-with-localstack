@@ -7,7 +7,8 @@ import { LabBlock } from '@/components/lab-block';
 import { Section } from '@/components/section';
 import { FigureCards } from '@/components/figure-cards';
 import { Curriculum } from '@/components/curriculum';
-import { SiteFooter } from '@/components/site-footer';
+import { JsonLd } from '@/components/json-ld';
+import { websiteLd } from '@/lib/structured-data';
 
 export default async function Home({ params }: PageProps<'/[lang]'>) {
   const { lang } = await params;
@@ -56,7 +57,7 @@ export default async function Home({ params }: PageProps<'/[lang]'>) {
           ))}
         </div>
       </Section>
-      <SiteFooter lang={lang} t={t.footer} />
+      <JsonLd data={websiteLd} />
     </main>
   );
 }

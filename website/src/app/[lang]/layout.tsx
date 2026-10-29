@@ -3,10 +3,10 @@ import { RootProvider } from 'fumadocs-ui/provider/next';
 import { i18nProvider } from 'fumadocs-ui/i18n';
 import { Fraunces, IBM_Plex_Mono, IBM_Plex_Sans, Noto_Sans_Bengali, Noto_Serif_Bengali } from 'next/font/google';
 import { translations } from '@/lib/translations';
+import { SiteFooter } from '@/components/site-footer';
+import { isLang } from '@/lib/i18n';
 import { i18n } from '@/lib/i18n';
 import { appName, siteUrl } from '@/lib/shared';
-import { JsonLd } from '@/components/json-ld';
-import { websiteLd } from '@/lib/structured-data';
 import '../global.css';
 
 const display = Fraunces({ subsets: ['latin'], variable: '--font-display', axes: ['opsz'] });
@@ -36,8 +36,10 @@ export default async function RootLayout({ params, children }: LayoutProps<'/[la
   return (
     <html lang={lang} className={fonts} suppressHydrationWarning>
       <body className="flex min-h-screen flex-col">
-        <RootProvider i18n={i18nProvider(translations, lang)}>{children}</RootProvider>
-        <JsonLd data={websiteLd} />
+        <RootProvider i18n={i18nProvider(translations, lang)}>
+          {children}
+          {isLang(lang) && <SiteFooter lang={lang} />}
+        </RootProvider>
       </body>
     </html>
   );

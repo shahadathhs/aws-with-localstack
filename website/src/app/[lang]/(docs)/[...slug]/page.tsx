@@ -11,9 +11,8 @@ import { LessonHeader } from '@/components/lesson/lesson-header';
 import { lessonLabels } from '@/lib/lesson-labels';
 import { isLang, i18n } from '@/lib/i18n';
 import type { Node } from 'fumadocs-core/page-tree';
+import { flatPages as flat } from '@/lib/page-tree';
 
-const flat = (nodes: Node[]): { url: string; name: React.ReactNode }[] =>
-  nodes.flatMap((n) => (n.type === 'page' ? [n] : n.type === 'folder' ? [...(n.index ? [n.index] : []), ...flat(n.children)] : []));
 const words = {
   en: { prev: 'Previous', next: 'Next', lessons: 'All lessons', lesson: 'Lesson', of: 'of' },
   bn: { prev: 'আগের পাতা', next: 'পরের পাতা', lessons: 'সব পাঠ', lesson: 'পাঠ', of: '/' },

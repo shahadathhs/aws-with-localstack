@@ -20,6 +20,6 @@ export const personLd = {
   description: 'Backend engineer building microservices and AI-powered systems with Node.js, TypeScript, and Python.',
   url: `${siteUrl}/en/author/`,
   mainEntityOfPage: author.site,
-  sameAs: [author.site, author.github, author.linkedin, author.x, 'https://medium.com/@shahadathhs'],
+  sameAs: [author.site, author.github, author.linkedin, author.x, author.medium],
   knowsAbout: ['AWS', 'LocalStack', 'Node.js', 'TypeScript', 'Python', 'Docker', 'PostgreSQL', 'Redis'],
 };

@@ -14,7 +14,6 @@ export interface Copy {
   curriculum: { label: string; phase: string; topic: string; lessons: string; status: string; statuses: Record<Status, string> };
   phases: { n: string; title: string; text: string; lessons: number; done: number; status: Status }[];
   short: { label: string; items: { title: string; text: string }[] };
-  footer: { learn: string; setup: string; project: string; plan: string; compose: string; cli: string; arch: string; author: string };
 }
 
 const en: Copy = {
@@ -64,7 +63,6 @@ const en: Copy = {
       { title: 'Open source', text: 'Markdown in the repo; fix a lesson with a pull request.' },
     ],
   },
-  footer: { learn: 'Learn', setup: 'Set up', project: 'Project', plan: 'Learning plan', compose: 'Docker Compose', cli: 'AWS CLI', arch: 'How LocalStack works', author: 'Author' },
 };
 
 // Bangla copy is a first pass: have a native speaker review it
@@ -115,7 +113,6 @@ const bn: Copy = {
       { title: 'ওপেন সোর্স', text: 'রিপোতে Markdown; pull request দিয়ে লেসন ঠিক করো।' },
     ],
   },
-  footer: { learn: 'শিখুন', setup: 'সেট আপ', project: 'প্রজেক্ট', plan: 'শেখার পরিকল্পনা', compose: 'Docker Compose', cli: 'AWS CLI', arch: 'LocalStack কীভাবে কাজ করে', author: 'লেখক' },
 };
 
 export const copy: Record<Lang, Copy> = { en, bn };

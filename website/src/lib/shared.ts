@@ -12,4 +12,5 @@ export const author = {
   github: 'https://github.com/shahadathhs',
   linkedin: 'https://www.linkedin.com/in/shahadathhs/',
   x: 'https://x.com/shahadathhs',
+  medium: 'https://medium.com/@shahadathhs',
 };
