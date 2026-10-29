@@ -37,7 +37,7 @@ export default async function Page({ params }: Props) {
   const group = folder && inFolder.length > 1 ? { name: folder.name, at: inFolder.findIndex((p) => p.url === page.url), total: inFolder.length } : null;
   const MDX = page.data.body;
   return (
-    <div className="grid gap-x-10 px-4 py-8 md:px-12 md:py-12 lg:grid-cols-[13.5rem_minmax(0,1fr)]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-x-10 px-4 py-8 md:px-12 md:py-12 lg:grid-cols-[13.5rem_minmax(0,1fr)]">
       <aside className="lg:sticky lg:top-20 lg:border-e lg:border-fd-border lg:pe-4 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
         <details className="mb-6 border-b border-fd-border pb-4 lg:hidden">
           <summary className="cursor-pointer text-sm font-medium">{t.lessons}</summary>
