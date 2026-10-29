@@ -158,8 +158,8 @@ button:not(:disabled), [role='button']:not([aria-disabled='true']), summary, sel
 .lesson blockquote p { margin: 6px 0; }
 .lesson table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 22px 0; }
 @media (max-width: 640px) { .lesson table { display: block; overflow-x: auto; } }
-.lesson th { text-align: start; font: 400 11.5px var(--font-mono-latin), monospace; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
-.lesson td { padding: 12px 14px 12px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.lesson th { text-align: start; font: 400 11.5px var(--font-mono-latin), monospace; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; padding: 8px 10px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+.lesson td { padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .lesson figure.shiki, .lesson pre { background: var(--sunken); border: 1px solid var(--line); border-radius: 6px; font-size: 13px; line-height: 1.65; }
 .lesson hr { border-color: var(--line); margin: 36px 0; }
 .side-dot { width: 6px; height: 6px; border-radius: 99px; background: var(--ok); flex: none; margin-top: 9px; }
@@ -198,9 +198,9 @@ details.lab[open] > summary.lab-hd { border-bottom: 1px solid var(--line); }
 .lab-step.verify ul { list-style: none; margin: 0; padding: 0; }
 .lab-step.verify li { margin: 0; padding: 3px 0; }
 .lab-step.verify li::before { content: '\2713'; color: var(--ok); margin-inline-end: 10px; }
-.lab-guess { width: 100%; border: 1px dashed var(--accent); border-radius: 6px; padding: 10px 12px; font: 13px var(--font-mono-latin), monospace; background: var(--bg); color: var(--text); resize: vertical; }
+.lab-guess { display: block; margin-top: 12px; width: 100%; border: 1px dashed var(--accent); border-radius: 6px; padding: 10px 12px; font: 13px var(--font-mono-latin), monospace; background: var(--bg); color: var(--text); resize: vertical; }
 .lab-guess::placeholder { color: var(--text3); }
-.lab-answer { margin-top: 10px; }
+.lab-answer { margin: 12px 0; }
 .lab-answer > summary { display: inline-flex; border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 6px 12px; font: 12.5px var(--font-mono-latin), monospace; list-style: none; }
 .lab-answer > div { margin-top: 10px; border-inline-start: 3px solid var(--accent); background: var(--accent-bg); padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 14px; color: var(--text); }
 .lab-answer > div p { margin: 4px 0; }
