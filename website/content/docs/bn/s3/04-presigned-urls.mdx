@@ -65,7 +65,16 @@ SHORT=$(aws s3 presign s3://ph1-bucket/docs/notes/today.txt --expires-in 5)
 sleep 6 && curl -s "$SHORT"
 # <Error><Code>AccessDenied</Code>... Request has expired
 ```
-  </Run>
+    <Output>
+```text
+# shortened: credential, date, signature and error details
+# the last line needs S3_SKIP_SIGNATURE_VALIDATION=0
+http://localhost.localstack.cloud:4566/ph1-bucket/docs/notes/today.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=…&X-Amz-Date=…&X-Amz-Expires=300&X-Amz-SignedHeaders=host&X-Amz-Signature=…
+hello
+<Error><Code>AccessDenied</Code><Message>Request has expired</Message>…</Error>
+```
+  </Output>
+</Run>
   <Verify>
     - প্রথম `curl` কোনো AWS credential ছাড়াই `hello` ছাপে
     - URL-এ `X-Amz-Algorithm`, `X-Amz-Credential`, `X-Amz-Date`, `X-Amz-Expires=300` ও `X-Amz-Signature` আছে

@@ -66,7 +66,39 @@ echo v3 > /tmp/f.txt && aws s3 cp /tmp/f.txt s3://ph1-bucket/v/f.txt
 aws s3 rm s3://ph1-bucket/v/f.txt
 aws s3api list-object-versions --bucket ph1-bucket --prefix v/
 ```
-  </Run>
+    <Output>
+```text
+# shortened: ETags, checksums and timestamps left out; VersionIds differ
+delete: s3://ph1-bucket/v/f.txt
+{
+    "Versions": [
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdNKJHOG3OWZj1zcJNqk5qkSJUq",
+            "IsLatest": false
+        },
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdMuCItpacbD2uxIhDGw7PwhSDs",
+            "IsLatest": false
+        },
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdLDBRX.hCYd3RyZwiaQ.ibRDyk",
+            "IsLatest": false
+        }
+    ],
+    "DeleteMarkers": [
+        {
+            "Key": "v/f.txt",
+            "VersionId": "AaGFnGdOuBP6.l9WWP7sfTkCWUgpl3ob",
+            "IsLatest": true
+        }
+    ]
+}
+```
+  </Output>
+</Run>
   <Verify>
     - `Versions`-এর নিচে তিনটি এন্ট্রি, প্রতিটির নিজস্ব `VersionId`
     - `IsLatest: true`-সহ একটি `DeleteMarkers` এন্ট্রি

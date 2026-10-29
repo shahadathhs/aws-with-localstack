@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Children, isValidElement, useId, type ReactNode } from 'react';
 import type { LessonLabels } from '@/lib/lesson-labels';
 
 /** A lab: numbered Predict, Run and Verify steps in one card. Steps number themselves with a CSS counter. */
@@ -60,10 +60,38 @@ export function Answer({ t, children }: { t: LessonLabels; children: ReactNode }
   );
 }
 
+/** Marks the expected output inside a `<Run>`: the step then offers Command and Expected output tabs. */
+export function Output({ children }: { children?: ReactNode }) {
+  return <>{children}</>;
+}
+
+/**
+ * The commands to run. With an `<Output>` child it shows two tabs, switched by CSS radio inputs (no JavaScript);
+ * without one it is just the commands.
+ */
 export function Run({ t, children }: { t: LessonLabels; children: ReactNode }) {
+  const id = useId();
+  const nodes = Children.toArray(children);
+  const output = nodes.find((n) => isValidElement(n) && n.type === Output);
+  if (!output) {
+    return (
+      <Step kind="run" tag={t.run}>
+        {children}
+      </Step>
+    );
+  }
   return (
     <Step kind="run" tag={t.run}>
-      {children}
+      <div className="run-tabs">
+        <input type="radio" name={id} id={`${id}c`} defaultChecked aria-label={t.command} />
+        <input type="radio" name={id} id={`${id}o`} aria-label={t.expected} />
+        <div className="run-tablist">
+          <label htmlFor={`${id}c`}>{t.command}</label>
+          <label htmlFor={`${id}o`}>{t.expected}</label>
+        </div>
+        <div className="run-cmd">{nodes.filter((n) => n !== output)}</div>
+        <div className="run-out">{output}</div>
+      </div>
     </Step>
   );
 }

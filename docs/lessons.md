@@ -76,6 +76,25 @@ the commands (a fenced block, starting at column 0)
 </Lab>
 ```
 
+- Add `<Output>` inside `<Run>` to show a **Command / Expected output** tab pair. Put the output in a fenced block
+  (`text` is fine) after the commands:
+
+  ```mdx
+  <Run>
+  ```sh
+  aws iam list-user-policies --user-name report-bot
+  ```
+  <Output>
+  ```text
+  { "PolicyNames": ["TodoRead"] }
+  ```
+  </Output>
+  </Run>
+  ```
+
+  Only paste output you saw. If you shorten it (IDs, timestamps, progress lines), say so in a `#` comment on the
+  first line, and keep that comment under about 80 characters so it does not scroll. The tabs are plain CSS, so they
+  work without JavaScript. The output is the same in both languages.
 - Steps are numbered automatically. A lab may have only `<Run>` and `<Verify>` (for example a second, follow-up lab).
 - `collapsed` on `<Lab>` makes it a closed disclosure: good for a second lab or an optional extra.
 - Put a blank line between a JSX tag and markdown that follows it, and start fenced code blocks at column 0, or MDX

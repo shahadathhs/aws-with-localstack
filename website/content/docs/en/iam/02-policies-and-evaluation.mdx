@@ -102,7 +102,37 @@ aws iam put-user-policy --user-name report-bot --policy-name TodoRead --policy-d
 aws iam list-user-policies --user-name report-bot
 aws iam get-user-policy --user-name report-bot --policy-name TodoRead
 ```
-  </Run>
+    <Output>
+```text
+{
+    "PolicyNames": [
+        "TodoRead"
+    ]
+}
+{
+    "UserName": "report-bot",
+    "PolicyName": "TodoRead",
+    "PolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "ReadTodoPrefix",
+                "Effect": "Allow",
+                "Action": [
+                    "s3:GetObject",
+                    "s3:ListBucket"
+                ],
+                "Resource": [
+                    "arn:aws:s3:::ph1-bucket",
+                    "arn:aws:s3:::ph1-bucket/todo/*"
+                ]
+            }
+        ]
+    }
+}
+```
+  </Output>
+</Run>
   <Verify>
     - `list-user-policies` shows `TodoRead` for `report-bot`
     - `get-user-policy` returns the policy document you stored

@@ -36,15 +36,15 @@ warm paper, ink, real terminal output, and a drawing of the idea before any comm
 | 08  | Rich lesson: header strip, diagrams, lab, callouts, recap | [png](mockups/08-lesson-rich.png)   | [png](mockups/08-lesson-rich-dark.png)   |
 | 09  | Rich lesson, mobile                              | [png](mockups/09-lesson-rich-mobile.png) | [png](mockups/09-lesson-rich-mobile-dark.png) |
 
-Still to mock before building: a Bangla lesson (needs a Bengali typeface), the 404 page, and the remaining
-diagrams (presigned URL flow, storage-class ladder).
+The 404 page is built (not mocked first): a missing page shown as an S3 `NoSuchKey`, in the home page's lab card, with
+the requested path in the command. Mockups are not yet drawn for it or for a Bangla lesson.
 
 ## Lesson components (built; mockups 08 and 09)
 
 Lessons are authored in MDX with a small kit so they carry the home page's structure instead of plain prose.
 Source: `website/src/components/lesson/`. Section numbers (`01 /`) come from CSS counters on the `##` headings, so
 plain-markdown lessons get them too; the anchor chips are built from the same headings. "Good to know" is neutral
-(not amber), since amber means real AWS. Not built yet: the Command / Expected output tabs on `<Run>`.
+(not amber), since amber means real AWS. `<Run>` can show Command / Expected output tabs (an `<Output>` inside it); the output is only ever real, shortened output.
 
 | Component | What it is |
 | --- | --- |

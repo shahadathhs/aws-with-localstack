@@ -6,6 +6,8 @@ export interface LessonLabels {
   predict: string;
   run: string;
   verify: string;
+  command: string;
+  expected: string;
   guess: string;
   showAnswer: string;
   realAws: string;
@@ -25,6 +27,8 @@ const en: LessonLabels = {
   predict: 'predict',
   run: 'run',
   verify: 'verify',
+  command: 'Command',
+  expected: 'Expected output',
   guess: 'Your guess…',
   showAnswer: 'Show answer',
   realAws: 'Real AWS',
@@ -45,6 +49,8 @@ const bn: LessonLabels = {
   predict: 'অনুমান',
   run: 'চালাও',
   verify: 'যাচাই',
+  command: 'কমান্ড',
+  expected: 'প্রত্যাশিত আউটপুট',
   guess: 'তোমার অনুমান…',
   showAnswer: 'উত্তর দেখো',
   realAws: 'রিয়েল AWS',

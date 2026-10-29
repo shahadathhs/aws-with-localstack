@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { MDXComponents } from 'mdx/types';
 import { lessonLabels } from '@/lib/lesson-labels';
 import type { Lang } from '@/lib/i18n';
-import { Lab, Predict, Answer, Run, Verify } from './lab';
+import { Lab, Predict, Answer, Run, Output, Verify } from './lab';
 import { Callout } from './callout';
 import { Figures, Figure } from './figure';
 import { Recap } from './recap';
@@ -39,6 +39,7 @@ export function lessonComponents(lang: Lang): MDXComponents {
     Predict: (p: C) => <Predict t={t}>{p.children}</Predict>,
     Answer: (p: C) => <Answer t={t}>{p.children}</Answer>,
     Run: (p: C) => <Run t={t}>{p.children}</Run>,
+    Output,
     Verify: (p: C) => <Verify t={t}>{p.children}</Verify>,
     RealAws: callout('aws', t.realAws),
     Destructive: callout('deny', t.destructive),

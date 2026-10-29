@@ -69,7 +69,42 @@ aws iam create-role --role-name report-reader --assume-role-policy-document '{
   }]
 }'
 ```
-  </Run>
+    <Output>
+```text
+# IDs and dates differ on your machine
+{
+    "User": {
+        "Path": "/",
+        "UserName": "report-bot",
+        "UserId": "AIDAQAAAAAAAGGMRRKRGU",
+        "Arn": "arn:aws:iam::000000000000:user/report-bot",
+        "CreateDate": "2026-10-29T03:03:05.229206+00:00"
+    }
+}
+{
+    "Role": {
+        "Path": "/",
+        "RoleName": "report-reader",
+        "RoleId": "AROAQAAAAAAAB3HZONVR4",
+        "Arn": "arn:aws:iam::000000000000:role/report-reader",
+        "CreateDate": "2026-10-29T03:03:05.557189+00:00",
+        "AssumeRolePolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": "lambda.amazonaws.com"
+                    },
+                    "Action": "sts:AssumeRole"
+                }
+            ]
+        }
+    }
+}
+```
+  </Output>
+</Run>
   <Verify>
     - You can read the trust policy as prose: the Lambda service may assume this role
     - No other principal appears in it, so EC2 and users are excluded
