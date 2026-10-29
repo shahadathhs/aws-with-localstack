@@ -111,7 +111,7 @@ aws update          # স্ক্রিপ্ট/অফিসিয়াল �
 
 ## পরবর্তী ধাপ: LocalStack-এর দিকে নির্দেশ করা
 
-কোনো অতিরিক্ত টুল লাগে না — AWS CLI একটি সাধারণ profile দিয়েই LocalStack-এ যায় (`~/.aws/config`-এ `endpoint_url`)। অফিসিয়াল গাইড: [https://docs.localstack.cloud/aws/connecting/aws-cli/#configuring-a-custom-profile](https://docs.localstack.cloud/aws/connecting/aws-cli/#configuring-a-custom-profile) — অথবা এই রিপোতে শুধু:
+কোনো অতিরিক্ত টুল লাগে না — AWS CLI একটি সাধারণ profile দিয়েই LocalStack-এ যায় (`~/.aws/config`-এ `endpoint_url`)। অফিসিয়াল গাইড: [https://docs.localstack.cloud/aws/connecting/aws-cli/#configuring-a-custom-profile](https://docs.localstack.cloud/aws/connecting/aws-cli/#configuring-a-custom-profile) — অথবা [রিপোর](https://github.com/shahadathhs/aws-with-localstack) একটি ক্লোন থেকে ([সেটআপ গাইড](/bn/getting-started/localstack-compose/) দেখো) চালাও ([ছোট একটি স্ক্রিপ্ট](https://github.com/shahadathhs/aws-with-localstack/blob/main/infra/scripts/setup-aws-profile.sh) profile লেখে):
 
 ```sh
 make setup-cli      # ~/.aws-এ 'localstack' profile লেখে

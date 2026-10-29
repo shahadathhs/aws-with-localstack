@@ -23,7 +23,7 @@ Not magic — an HTTPS client. Every command (`aws s3 ls`) becomes an **HTTP req
 | `~/.aws/config`      | region, output format, `endpoint_url`, ...   | **where/how** to talk — not secret |
 | `~/.aws/credentials` | `aws_access_key_id`, `aws_secret_access_key` | **who** you are — secret           |
 
-This repo's `make setup-cli` adds a `localstack` profile to both:
+The repo's [`make setup-cli`](https://github.com/shahadathhs/aws-with-localstack/blob/main/infra/scripts/setup-aws-profile.sh) adds a `localstack` profile to both:
 
 ```ini
 # ~/.aws/config
@@ -66,7 +66,7 @@ For every command the CLI gathers settings; later sources override earlier ones:
 
 <Figure caption="how the CLI picks a setting"><ResolutionLadder /></Figure>
 
-That's why `make aws CMD='s3 ls'` works: it runs `AWS_PROFILE=localstack aws s3 ls` — layer 2 selects the profile, then layer 3 supplies region + endpoint.
+That's why [`make aws CMD='s3 ls'`](https://github.com/shahadathhs/aws-with-localstack/blob/main/Makefile) works: it runs `AWS_PROFILE=localstack aws s3 ls` — layer 2 selects the profile, then layer 3 supplies region + endpoint.
 
 ## The life of a command
 

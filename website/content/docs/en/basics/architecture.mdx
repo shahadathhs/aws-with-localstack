@@ -40,7 +40,7 @@ $ aws --profile localstack s3 ls
 4. Lambda: runs your function in sibling containers through docker.sock
 ```
 
-All state lives in container memory (it dies with `make clean`).
+All state lives in container memory (it dies with [`make clean`](https://github.com/shahadathhs/aws-with-localstack/blob/main/Makefile)).
 
 ## The fake account and region
 
@@ -76,7 +76,7 @@ Most services are emulated _inside_ the LocalStack container. Lambda actually **
 ## State and lifetime
 
 - Resources (buckets, queues, tables...) live in **container memory** — they survive `make restart`, die with the container, and `make clean` wipes everything
-- Persistence across full restarts is a Pro feature (`PERSISTENCE` env var — set to `0` by default in this repo's compose, inactive on the free tier)
+- Persistence across full restarts is a Pro feature (`PERSISTENCE` env var — set to `0` by default in [this repo's compose file](https://github.com/shahadathhs/aws-with-localstack/blob/main/infra/compose.yaml), inactive on the free tier)
 
 <Note title="In LocalStack">
   `make clean` stops the container and deletes all data. Rebuild your buckets, queues and tables afterwards.
